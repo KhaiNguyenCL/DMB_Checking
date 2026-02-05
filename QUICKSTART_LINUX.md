@@ -21,9 +21,7 @@ cd learning_api_scraping
 sudo apt update && sudo apt upgrade -y
 
 # Cài Python và Chrome
-sudo apt install -y python3 python3-pip python3-venv wget unzip
-
-# Cài Chrome
+sudo apt install -y python3 python3-pip python3-venv wget unzip0
 wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
 sudo dpkg -i google-chrome-stable_current_amd64.deb
 sudo apt --fix-broken install -y
@@ -33,6 +31,10 @@ sudo apt --fix-broken install -y
 
 ```bash
 cd ~/learning_api_scraping
+
+<div class="intranet-auth-cover-header">
+				<?=Loc::getMessage("INTRANET_LOGIN_AIR_PROMO");?>
+			</div>
 
 # Tạo venv
 python3 -m venv venv
