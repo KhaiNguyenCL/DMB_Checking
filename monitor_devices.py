@@ -146,12 +146,15 @@ def save_current_state(devices):
         "devices": {}
     }
     
-    # Build state dict from all devices
+    # Build state dict - OPTIMIZATION: only Vietnam devices
     for device in devices:
-        if len(device) > DEVICE_ID_IDX:
-            device_id = device[DEVICE_ID_IDX].strip()
-            status = device[STATUS_IDX].strip()
-            state_data["devices"][device_id] = status
+        if len(device) > max(DEVICE_ID_IDX, REGION_IDX):
+            region = device[REGION_IDX].strip()
+            # Only save Vietnam devices
+            if region == "Vietnam":
+                device_id = device[DEVICE_ID_IDX].strip()
+                status = device[STATUS_IDX].strip()
+                state_data["devices"][device_id] = status
     
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
@@ -338,10 +341,11 @@ def main():
                 print_and_log("\n⚠️  Bitrix notification bị tắt (module không có)")
             
             # STATE TRACKING: Save current state for next iteration
-            # IMPORTANT: Save ALL devices (not just filtered), để track both ON and OFF
+            # OPTIMIZATION: Only save Vietnam devices for performance
             all_devices = data.get("data", [])
             save_current_state(all_devices)
-            print_and_log(f"💾 Đã lưu state của {len(all_devices)} devices")
+            vietnam_count = sum(1 for d in all_devices if len(d) > REGION_IDX and d[REGION_IDX].strip() == "Vietnam")
+            print_and_log(f"💾 Đã lưu state của {vietnam_count} Vietnam devices")
             
             # Countdown
             print(f"\n⏳ Check tiếp theo trong 5 phút...")
