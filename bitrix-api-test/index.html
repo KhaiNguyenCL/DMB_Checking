@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitrix24 CRM API Test Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .api-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .api-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .api-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .api-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .api-card .icon {
+            font-size: 1.8rem;
+        }
+
+        .api-card p {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            transform: scale(1.02);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+        }
+
+        .btn-success:hover {
+            box-shadow: 0 5px 15px rgba(56, 239, 125, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .result-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-top: 30px;
+            display: none;
+        }
+
+        .result-container.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .result-header h2 {
+            color: #667eea;
+            font-size: 1.8rem;
+        }
+
+        .result-stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-item {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            flex: 1;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        pre {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            border-left: 4px solid #667eea;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        code {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #c33;
+            margin-bottom: 20px;
+        }
+
+        .count-input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .count-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🚀 Bitrix24 CRM API Test Dashboard</h1>
+
+        <div class="api-grid">
+            <!-- Leads -->
+            <div class="api-card">
+                <h3><span class="icon">👤</span> Leads</h3>
+                <p>Lấy danh sách Leads (Người tiềm năng) từ CRM</p>
+                <input type="number" class="count-input" id="leadsCount" placeholder="Số lượng records (mặc định: 50)"
+                    value="50">
+                <button class="btn btn-primary" onclick="fetchData('leads')">Lấy Leads</button>
+                <button class="btn btn-success" onclick="fetchData('leads', 'fields')">Lấy Fields</button>
+            </div>
+
+            <!-- Contacts -->
+            <div class="api-card">
+                <h3><span class="icon">👥</span> Contacts</h3>
+                <p>Lấy danh sách Contacts (Người liên hệ) từ CRM</p>
+                <input type="number" class="count-input" id="contactsCount"
+                    placeholder="Số lượng records (mặc định: 50)" value="50">
+                <button class="btn btn-primary" onclick="fetchData('contacts')">Lấy Contacts</button>
+                <button class="btn btn-success" onclick="fetchData('contacts', 'fields')">Lấy Fields</button>
+            </div>
+
+            <!-- Companies -->
+            <div class="api-card">
+                <h3><span class="icon">🏢</span> Companies</h3>
+                <p>Lấy danh sách Companies (Công ty) từ CRM</p>
+                <input type="number" class="count-input" id="companiesCount"
+                    placeholder="Số lượng records (mặc định: 50)" value="50">
+                <button class="btn btn-primary" onclick="fetchData('companies')">Lấy Companies</button>
+                <button class="btn btn-success" onclick="fetchData('companies', 'fields')">Lấy Fields</button>
+            </div>
+
+            <!-- Deals -->
+            <div class="api-card">
+                <h3><span class="icon">💼</span> Deals</h3>
+                <p>Lấy danh sách Deals (Giao dịch) từ CRM</p>
+                <input type="number" class="count-input" id="dealsCount" placeholder="Số lượng records (mặc định: 50)"
+                    value="50">
+                <button class="btn btn-primary" onclick="fetchData('deals')">Lấy Deals</button>
+                <button class="btn btn-success" onclick="fetchData('deals', 'fields')">Lấy Fields</button>
+            </div>
+
+            <!-- Products -->
+            <div class="api-card">
+                <h3><span class="icon">📦</span> Products</h3>
+                <p>Lấy danh sách Products (Sản phẩm) từ Catalog</p>
+                <input type="number" class="count-input" id="productsCount"
+                    placeholder="Số lượng records (mặc định: 50)" value="50">
+                <button class="btn btn-primary" onclick="fetchData('products')">Lấy Products</button>
+                <button class="btn btn-success" onclick="fetchData('products', 'fields')">Lấy Fields</button>
+            </div>
+
+            <!-- Invoices -->
+            <div class="api-card">
+                <h3><span class="icon">📄</span> Invoices</h3>
+                <p>Lấy danh sách Invoices (Hóa đơn) từ CRM</p>
+                <input type="number" class="count-input" id="invoicesCount"
+                    placeholder="Số lượng records (mặc định: 50)" value="50">
+                <button class="btn btn-primary" onclick="fetchData('invoices')">Lấy Invoices</button>
+                <button class="btn btn-success" onclick="fetchData('invoices', 'fields')">Lấy Fields</button>
+            </div>
+
+            <!-- Quotes -->
+            <div class="api-card">
+                <h3><span class="icon">📝</span> Quotes</h3>
+                <p>Lấy danh sách Quotes (Báo giá) từ CRM</p>
+                <input type="number" class="count-input" id="quotesCount" placeholder="Số lượng records (mặc định: 50)"
+                    value="50">
+                <button class="btn btn-primary" onclick="fetchData('quotes')">Lấy Quotes</button>
+                <button class="btn btn-success" onclick="fetchData('quotes', 'fields')">Lấy Fields</button>
+            </div>
+
+            <!-- Activities -->
+            <div class="api-card">
+                <h3><span class="icon">📅</span> Activities</h3>
+                <p>Lấy danh sách Activities (Hoạt động) từ CRM</p>
+                <input type="number" class="count-input" id="activitiesCount"
+                    placeholder="Số lượng records (mặc định: 50)" value="50">
+                <button class="btn btn-primary" onclick="fetchData('activities')">Lấy Activities</button>
+                <button class="btn btn-success" onclick="fetchData('activities', 'fields')">Lấy Fields</button>
+            </div>
+        </div>
+
+        <!-- Result Container -->
+        <div class="result-container" id="resultContainer">
+            <div class="result-header">
+                <h2 id="resultTitle">Kết quả</h2>
+                <button class="btn btn-primary" onclick="closeResult()"
+                    style="width: auto; padding: 8px 20px;">Đóng</button>
+            </div>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchData(entity, action = 'list') {
+            const resultContainer = document.getElementById('resultContainer');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultContent = document.getElementById('resultContent');
+
+            // Get count value
+            const countInput = document.getElementById(`${entity}Count`);
+            const count = countInput ? parseInt(countInput.value) || 50 : 50;
+
+            // Show loading
+            resultContainer.classList.add('active');
+            const entityName = {
+                'leads': 'Leads',
+                'contacts': 'Contacts',
+                'companies': 'Companies',
+                'deals': 'Deals',
+                'products': 'Products',
+                'invoices': 'Invoices',
+                'quotes': 'Quotes',
+                'activities': 'Activities'
+            }[entity];
+
+            resultTitle.textContent = action === 'fields'
+                ? `Fields của ${entityName}`
+                : `Danh sách ${entityName}`;
+
+            resultContent.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Đang tải dữ liệu...</p>
+                </div>
+            `;
+
+            try {
+                const url = action === 'fields'
+                    ? `api/test-${entity}.php?action=fields`
+                    : `api/test-${entity}.php?count=${count}`;
+
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Unknown error');
+                }
+
+                // Display stats
+                let statsHtml = '';
+                if (action === 'list' && data.data) {
+                    const totalCount = Array.isArray(data.data) ? data.data.length : 0;
+                    statsHtml = `
+                        <div class="result-stats">
+                            <div class="stat-item">
+                                <div class="stat-label">Tổng số records</div>
+                                <div class="stat-value">${totalCount}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Thời gian</div>
+                                <div class="stat-value">${data.execution_time || '—'}</div>
+                            </div>
+                        </div>
+                    `;
+                } else if (action === 'fields' && data.data) {
+                    const fieldCount = Object.keys(data.data).length;
+                    statsHtml = `
+                        <div class="result-stats">
+                            <div class="stat-item">
+                                <div class="stat-label">Tổng số fields</div>
+                                <div class="stat-value">${fieldCount}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                resultContent.innerHTML = statsHtml + `
+                    <pre><code>${JSON.stringify(data, null, 2)}</code></pre>
+                `;
+            } catch (error) {
+                resultContent.innerHTML = `
+                    <div class="error">
+                        <strong>❌ Lỗi:</strong> ${error.message}
+                    </div>
+                    <p>Vui lòng kiểm tra:</p>
+                    <ul>
+                        <li>File API có tồn tại không?</li>
+                        <li>Đã login vào Bitrix24 chưa?</li>
+                        <li>Module CRM đã được bật chưa?</li>
+                        <li>Console log để xem chi tiết lỗi</li>
+                    </ul>
+                `;
+                console.error('Fetch error:', error);
+            }
+        }
+
+        function closeResult() {
+            const resultContainer = document.getElementById('resultContainer');
+            resultContainer.classList.remove('active');
+        }
+    </script>
+</body>
+
+</html>
