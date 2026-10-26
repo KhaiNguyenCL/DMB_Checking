@@ -196,7 +196,8 @@ def main():
              settings.QUIET_END, settings.LOCAL_TZ.key)
     log.info("Tong hop  : %s", settings.DAILY_SUMMARY_AT
              if settings.DAILY_SUMMARY_ENABLED else "tat")
-    log.info("Bitrix    : %s", "bat" if settings.BITRIX_ENABLED else "tat")
+    log.info("Bitrix    : %s", "bat (dialog {})".format(settings.BITRIX_DIALOG_ID or "CHUA DAT")
+             if settings.BITRIX_ENABLED else "tat")
     log.info("=" * 70)
 
     conn = wait_for_db()

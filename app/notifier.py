@@ -15,18 +15,32 @@ log = logging.getLogger(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+def _redact(text: str) -> str:
+    """
+    Xoa ma webhook khoi chuoi truoc khi log.
+    requests dua nguyen URL vao message cua exception (vi du
+    "Max retries exceeded with url: /rest/96/<ma>/im.message.add.json"),
+    nen khong che di thi ma webhook se nam trong docker log.
+    """
+    text = str(text)
+    code = settings.BITRIX_WEBHOOK_CODE
+    if code:
+        text = text.replace(code, "***")
+    return text
+
+
 def _post(message: str) -> dict:
     if not settings.BITRIX_ENABLED:
         log.info("Bitrix dang tat (BITRIX_ENABLED=false) - bo qua notification")
         return {"success": False, "error": "disabled"}
 
-    if not settings.BITRIX_WEBHOOK_URL.strip("/") or not settings.BITRIX_CHAT_ID:
-        log.error("Thieu BITRIX_WEBHOOK_URL hoac BITRIX_CHAT_ID")
+    if not settings.BITRIX_WEBHOOK_URL.strip("/") or not settings.BITRIX_DIALOG_ID:
+        log.error("Thieu BITRIX_WEBHOOK_URL hoac BITRIX_DIALOG_ID/BITRIX_CHAT_ID")
         return {"success": False, "error": "missing config"}
 
     url = settings.BITRIX_WEBHOOK_URL + "im.message.add.json"
     payload = {
-        "DIALOG_ID": "chat{}".format(settings.BITRIX_CHAT_ID),
+        "DIALOG_ID": settings.BITRIX_DIALOG_ID,
         "MESSAGE": message,
     }
 
@@ -34,14 +48,15 @@ def _post(message: str) -> dict:
         resp = requests.post(url, json=payload, timeout=settings.BITRIX_TIMEOUT, verify=True)
         data = resp.json()
     except Exception as exc:
-        log.error("Gui Bitrix that bai: %s", exc)
-        return {"success": False, "error": str(exc)}
+        err = _redact(exc)
+        log.error("Gui Bitrix that bai: %s", err)
+        return {"success": False, "error": err}
 
     if data.get("result"):
         log.info("Da gui Bitrix (message_id=%s)", data["result"])
         return {"success": True, "message_id": data["result"]}
 
-    err = data.get("error_description") or data.get("error") or "unknown"
+    err = _redact(data.get("error_description") or data.get("error") or "unknown")
     log.error("Bitrix tra loi: %s", err)
     return {"success": False, "error": err}
 

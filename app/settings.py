@@ -4,6 +4,7 @@ Khong hardcode secret trong source nua - xem file .env.example
 """
 
 import os
+import re
 from zoneinfo import ZoneInfo
 
 
@@ -71,7 +72,43 @@ DB_DSN = os.getenv("DMB_DB_DSN", _DEFAULT_DSN)
 # ---------------- Bitrix24 ----------------
 BITRIX_ENABLED = _bool("BITRIX_ENABLED", True)
 BITRIX_WEBHOOK_URL = os.getenv("BITRIX_WEBHOOK_URL", "").rstrip("/") + "/"
-BITRIX_CHAT_ID = os.getenv("BITRIX_CHAT_ID", "")
 BITRIX_TIMEOUT = _int("BITRIX_TIMEOUT", 30)
+
+# DIALOG_ID cua im.message.add nhan 3 dang:
+#   chat<ID>  chat thuong, hoac chat cua workgroup
+#   sg<ID>    chat cua group / project (sg + group ID, vi du sg169)
+#   <ID>      chat rieng 1-1 voi user co ID do
+_DIALOG_RE = re.compile(r"^(chat|sg)?(\d+)$", re.IGNORECASE)
+
+
+def _resolve_dialog_id() -> str:
+    """
+    BITRIX_DIALOG_ID: dat gi dung nguyen cai do (chat911 / sg169 / 42).
+    BITRIX_CHAT_ID  : giu de tuong thich ban cu, so tran duoc hieu la chat<ID>.
+
+    Gia tri khong khop dinh dang thi tra ve nguyen van de Bitrix bao loi ro
+    rang, thay vi am tham sua thanh mot dialog khac.
+    """
+    for name, default_prefix in (("BITRIX_DIALOG_ID", ""), ("BITRIX_CHAT_ID", "chat")):
+        raw = os.getenv(name, "").strip()
+        if not raw:
+            continue
+        match = _DIALOG_RE.match(raw)
+        if not match:
+            return raw
+        prefix, number = match.groups()
+        return (prefix.lower() if prefix else default_prefix) + number
+    return ""
+
+
+BITRIX_DIALOG_ID = _resolve_dialog_id()
+
+# Ma webhook = doan cuoi cua URL (.../rest/<user_id>/<ma>/).
+# Giu rieng de xoa khoi thong bao loi: requests nhet nguyen URL vao message
+# cua exception, nen loi mang se ghi ca ma webhook vao log neu khong che di.
+_url_parts = [p for p in BITRIX_WEBHOOK_URL.split("/") if p]
+BITRIX_WEBHOOK_CODE = (
+    _url_parts[-1] if len(_url_parts) >= 2 and _url_parts[-2].isdigit() else ""
+)
 
 LOG_LEVEL = os.getenv("DMB_LOG_LEVEL", "INFO").upper()

@@ -63,8 +63,8 @@ Lan chay dau tien: danh dau 16 event la da xu ly, khong gui
 |---|---|
 | `POSTGRES_PASSWORD` | Bắt buộc, compose sẽ từ chối chạy nếu để trống. `openssl rand -base64 24` |
 | `GRAFANA_ADMIN_PASSWORD` | Bắt buộc, tương tự |
-| `BITRIX_WEBHOOK_URL` | **Tạo token mới** — token cũ đã bị commit lên git, xem phần Bảo mật |
-| `BITRIX_CHAT_ID` | `911` (workgroup DMD Checking Notification) |
+| `BITRIX_WEBHOOK_URL` | **Tạo webhook mới** — cái cũ đã bị commit lên git, xem phần Bảo mật |
+| `BITRIX_CHAT_ID` | `911` (workgroup DMD Checking Notification), hoặc dùng `BITRIX_DIALOG_ID` |
 
 Các biến khác đều có giá trị mặc định hợp lý, xem chú thích trong `.env.example`.
 
@@ -135,6 +135,44 @@ Hai view tiện dụng: `v_offline_now`, `v_flapping_7d`.
 > Lưu ý về `status_changed_at`: đây là lúc **monitor ghi nhận** thay đổi, không
 > phải lúc thiết bị thật sự rớt. Thời gian offline thực tế tính từ `last_seen`
 > (view `v_offline_now` và dashboard đã làm đúng việc này).
+
+## Bitrix24: inbound webhook và quyền
+
+1. **Developer resources → Other → Inbound webhook** (bản cũ ghi "Incoming webhook").
+   Không phải *Outbound webhook* — cái đó là Bitrix gọi ra ngoài.
+2. Quyền cần tick: **chỉ `im`** (Instant messaging / Chat và cuộc gọi). Code chỉ
+   gọi duy nhất `im.message.add`, không cần `crm`, `user` hay gì khác.
+3. **Webhook chạy dưới danh nghĩa user đã tạo ra nó**, và user đó phải là thành
+   viên của chat đích. Nếu không sẽ nhận `403 INVALID_CREDENTIALS` dù scope đã
+   đúng — đây là lỗi hay gặp nhất và thông báo lỗi không gợi ý gì về nguyên nhân.
+   Nên tạo webhook bằng một account dịch vụ đã được thêm vào workgroup, để
+   notification không chết khi người tạo rời công ty.
+4. Không cần dựng lại bot. `BOT_ID` / `BOT_CLIENT_ID` / `BOT_HANDLER_URL` trong
+   config cũ thuộc Bot API (`imbot`, cần server nhận handler) và không còn dùng.
+
+### Chọn nơi nhận tin
+
+`im.message.add` nhận `DIALOG_ID` theo ba dạng, cấu hình qua `BITRIX_DIALOG_ID`:
+
+| Giá trị | Ý nghĩa |
+|---|---|
+| `chat911` | chat thường, hoặc chat của workgroup |
+| `sg169` | chat của group / project (`sg` + group ID) |
+| `42` | chat riêng 1-1 với user ID 42 |
+
+`BITRIX_CHAT_ID=911` (dạng cũ) vẫn hoạt động, số trần được hiểu là `chat911`.
+Nếu đặt cả hai thì `BITRIX_DIALOG_ID` thắng. Chữ hoa và khoảng trắng thừa được
+chuẩn hoá; giá trị không đúng định dạng thì giữ nguyên để Bitrix báo lỗi rõ ràng
+thay vì âm thầm gửi sang dialog khác.
+
+Nếu `chat911` báo không tìm thấy dialog thì thử `BITRIX_DIALOG_ID=sg169` —
+workgroup DMD Checking Notification có group ID 169.
+
+Dialog đang dùng được in trong banner lúc khởi động:
+
+```
+Bitrix    : bat (dialog chat911)
+```
 
 ## Hành vi notification
 
