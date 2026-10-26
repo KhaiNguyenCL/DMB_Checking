@@ -1,19 +1,20 @@
 {
   "uid": "dmb-overview",
-  "title": "DMB Device Monitor",
-  "description": "Trang thai man hinh DMB: so thiet bi offline, lich su chuyen trang thai, suc khoe cua chinh monitor.",
-  "tags": ["dmb", "monitoring"],
+  "title": "Giám sát màn hình DMB",
+  "description": "Trạng thái màn hình menu DMB: số thiết bị offline, lịch sử chuyển trạng thái, và sức khoẻ của chính hệ thống giám sát.",
+  "tags": ["dmb", "giám sát"],
   "timezone": "Asia/Ho_Chi_Minh",
   "editable": true,
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "1m",
   "time": { "from": "now-24h", "to": "now" },
   "panels": [
     {
       "id": 1,
       "type": "stat",
-      "title": "Thiet bi dang offline",
+      "title": "Thiết bị đang offline",
+      "description": "Số màn hình đang mất kết nối ngay lúc này.",
       "datasource": { "type": "postgres", "uid": "dmb-postgres" },
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
       "targets": [
@@ -21,7 +22,7 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT count(*) AS \"Offline\" FROM devices WHERE status = 'Off' AND is_present"
+          "rawSql": "SELECT count(*) AS \"Đang offline\" FROM devices WHERE status = 'Off' AND is_present"
         }
       ],
       "options": {
@@ -50,7 +51,8 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Tong thiet bi theo doi",
+      "title": "Tổng thiết bị theo dõi",
+      "description": "Số thiết bị đang có trong danh sách giám sát, sau khi lọc theo khu vực và loại bỏ danh sách bỏ qua.",
       "datasource": { "type": "postgres", "uid": "dmb-postgres" },
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
       "targets": [
@@ -58,7 +60,7 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT count(*) AS \"Thiet bi\" FROM devices WHERE is_present"
+          "rawSql": "SELECT count(*) AS \"Thiết bị\" FROM devices WHERE is_present"
         }
       ],
       "options": {
@@ -76,8 +78,8 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Lan fetch thanh cong gan nhat",
-      "description": "Qua 10 phut ma chua co lan fetch thanh cong nghia la monitor dang co van de.",
+      "title": "Lần lấy dữ liệu gần nhất",
+      "description": "Quá 10 phút mà chưa có lần lấy dữ liệu thành công nghĩa là hệ thống giám sát đang gặp vấn đề.",
       "datasource": { "type": "postgres", "uid": "dmb-postgres" },
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
       "targets": [
@@ -85,7 +87,7 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - max(finished_at))), 999999) AS \"Cach day\" FROM fetch_runs WHERE ok"
+          "rawSql": "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - max(finished_at))), 999999) AS \"Cách đây\" FROM fetch_runs WHERE ok"
         }
       ],
       "options": {
@@ -114,7 +116,8 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Fetch loi (24h)",
+      "title": "Số lần lỗi (24 giờ)",
+      "description": "Số lần gọi API thất bại trong 24 giờ qua. Thường do mạng tới server YouFrame không ổn định.",
       "datasource": { "type": "postgres", "uid": "dmb-postgres" },
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
       "targets": [
@@ -122,7 +125,7 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT count(*) AS \"Loi\" FROM fetch_runs WHERE NOT ok AND finished_at > now() - INTERVAL '24 hours'"
+          "rawSql": "SELECT count(*) AS \"Số lần lỗi\" FROM fetch_runs WHERE NOT ok AND finished_at > now() - INTERVAL '24 hours'"
         }
       ],
       "options": {
@@ -151,7 +154,8 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "So thiet bi offline theo thoi gian",
+      "title": "Số thiết bị offline theo thời gian",
+      "description": "Mỗi điểm là một lần lấy dữ liệu. Đường nhảy bậc đột ngột cho thấy một đợt rớt mạng hàng loạt.",
       "datasource": { "type": "postgres", "uid": "dmb-postgres" },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
       "targets": [
@@ -159,7 +163,7 @@
           "refId": "A",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT started_at AS time, offline_count AS \"Offline\" FROM fetch_runs WHERE ok AND offline_count IS NOT NULL AND $__timeFilter(started_at) ORDER BY started_at"
+          "rawSql": "SELECT started_at AS time, offline_count AS \"Thiết bị offline\" FROM fetch_runs WHERE ok AND offline_count IS NOT NULL AND $__timeFilter(started_at) ORDER BY started_at"
         }
       ],
       "options": {
@@ -183,7 +187,7 @@
             "gradientMode": "none",
             "axisGridShow": true,
             "axisBorderShow": false,
-            "axisLabel": "Thiet bi offline"
+            "axisLabel": "Số thiết bị offline"
           }
         },
         "overrides": []
@@ -192,7 +196,8 @@
     {
       "id": 6,
       "type": "table",
-      "title": "Dang offline",
+      "title": "Thiết bị đang offline",
+      "description": "Thời gian offline tính từ lúc thiết bị báo tín hiệu cuối, không phải từ lúc hệ thống giám sát ghi nhận.",
       "datasource": { "type": "postgres", "uid": "dmb-postgres" },
       "gridPos": { "h": 11, "w": 12, "x": 0, "y": 14 },
       "targets": [
@@ -200,19 +205,19 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT name AS \"Thiet bi\", menu AS \"Menu\", last_seen AS \"Last seen\", EXTRACT(EPOCH FROM (now() - COALESCE(last_seen, status_changed_at))) AS \"Offline bao lau\", status_changed_at AS \"Monitor ghi nhan\" FROM devices WHERE status = 'Off' AND is_present ORDER BY COALESCE(last_seen, status_changed_at)"
+          "rawSql": "SELECT name AS \"Thiết bị\", menu AS \"Màn\", last_seen AS \"Thấy lần cuối\", EXTRACT(EPOCH FROM (now() - COALESCE(last_seen, status_changed_at))) AS \"Offline bao lâu\", status_changed_at AS \"Hệ thống ghi nhận\" FROM devices WHERE status = 'Off' AND is_present ORDER BY COALESCE(last_seen, status_changed_at)"
         }
       ],
       "options": {
         "showHeader": true,
         "cellHeight": "sm",
-        "sortBy": [{ "displayName": "Offline bao lau", "desc": true }]
+        "sortBy": [{ "displayName": "Offline bao lâu", "desc": true }]
       },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "filterable": true } },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Offline bao lau" },
+            "matcher": { "id": "byName", "options": "Offline bao lâu" },
             "properties": [
               { "id": "unit", "value": "s" },
               { "id": "decimals", "value": 0 }
@@ -224,8 +229,8 @@
     {
       "id": 7,
       "type": "table",
-      "title": "Thiet bi hay rot (7 ngay)",
-      "description": "Dem so lan chuyen trang thai. Nhieu lan = ket noi khong on dinh, khong phai mat han.",
+      "title": "Thiết bị hay rớt (7 ngày)",
+      "description": "Đếm số lần đổi trạng thái. Rớt lên rớt xuống nhiều lần nghĩa là mạng tại cửa hàng kém, khác với thiết bị tắt hẳn.",
       "datasource": { "type": "postgres", "uid": "dmb-postgres" },
       "gridPos": { "h": 11, "w": 12, "x": 12, "y": 14 },
       "targets": [
@@ -233,13 +238,13 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT d.name AS \"Thiet bi\", count(*) AS \"So lan doi trang thai\" FROM status_events e JOIN devices d USING (device_id) WHERE e.changed_at > now() - INTERVAL '7 days' AND e.old_status IS NOT NULL GROUP BY d.name ORDER BY 2 DESC LIMIT 30"
+          "rawSql": "SELECT d.name AS \"Thiết bị\", count(*) AS \"Số lần đổi trạng thái\" FROM status_events e JOIN devices d USING (device_id) WHERE e.changed_at > now() - INTERVAL '7 days' AND e.old_status IS NOT NULL GROUP BY d.name ORDER BY 2 DESC LIMIT 30"
         }
       ],
       "options": {
         "showHeader": true,
         "cellHeight": "sm",
-        "sortBy": [{ "displayName": "So lan doi trang thai", "desc": true }]
+        "sortBy": [{ "displayName": "Số lần đổi trạng thái", "desc": true }]
       },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "filterable": true } },
@@ -249,7 +254,8 @@
     {
       "id": 8,
       "type": "table",
-      "title": "Lich su chuyen trang thai",
+      "title": "Lịch sử chuyển trạng thái",
+      "description": "Cột \"Đã gửi Bitrix\" chỉ có ý nghĩa với các chuyển sang Off, vì chỉ loại đó mới sinh thông báo.",
       "datasource": { "type": "postgres", "uid": "dmb-postgres" },
       "gridPos": { "h": 11, "w": 24, "x": 0, "y": 25 },
       "targets": [
@@ -257,13 +263,13 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT e.changed_at AS \"Thoi diem\", d.name AS \"Thiet bi\", COALESCE(e.old_status, '(lan dau)') AS \"Tu\", e.new_status AS \"Sang\", e.notified AS \"Da gui Bitrix\" FROM status_events e JOIN devices d USING (device_id) WHERE $__timeFilter(e.changed_at) ORDER BY e.changed_at DESC LIMIT 500"
+          "rawSql": "SELECT e.changed_at AS \"Thời điểm\", d.name AS \"Thiết bị\", COALESCE(e.old_status, '(lần đầu)') AS \"Từ\", e.new_status AS \"Sang\", e.notified AS \"Đã gửi Bitrix\" FROM status_events e JOIN devices d USING (device_id) WHERE $__timeFilter(e.changed_at) ORDER BY e.changed_at DESC LIMIT 500"
         }
       ],
       "options": {
         "showHeader": true,
         "cellHeight": "sm",
-        "sortBy": [{ "displayName": "Thoi diem", "desc": true }]
+        "sortBy": [{ "displayName": "Thời điểm", "desc": true }]
       },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "filterable": true } },
@@ -274,11 +280,35 @@
               {
                 "id": "mappings",
                 "value": [
-                  { "type": "value", "options": { "Off": { "text": "Off", "color": "#d03b3b", "index": 0 } } },
-                  { "type": "value", "options": { "On": { "text": "On", "color": "#0ca30c", "index": 1 } } }
+                  { "type": "value", "options": { "Off": { "text": "Mất kết nối", "color": "#d03b3b", "index": 0 } } },
+                  { "type": "value", "options": { "On": { "text": "Hoạt động", "color": "#0ca30c", "index": 1 } } }
                 ]
               },
               { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Từ" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "Off": { "text": "Mất kết nối", "index": 0 } } },
+                  { "type": "value", "options": { "On": { "text": "Hoạt động", "index": 1 } } }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Đã gửi Bitrix" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "true": { "text": "Đã gửi", "index": 0 } } },
+                  { "type": "value", "options": { "false": { "text": "Không", "index": 1 } } }
+                ]
+              }
             ]
           }
         ]

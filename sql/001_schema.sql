@@ -115,7 +115,7 @@ WHERE status = 'Off' AND is_present
 ORDER BY COALESCE(last_seen, status_changed_at);
 
 CREATE OR REPLACE VIEW v_flapping_7d AS
-SELECT d.device_id, d.name, d.region, count(*) AS so_lan_doi_trang_thai
+SELECT d.device_id, d.name, d.region, count(*) AS "so_lan_doi_trang_thai"
 FROM status_events e
 JOIN devices d USING (device_id)
 WHERE e.changed_at > now() - INTERVAL '7 days'

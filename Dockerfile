@@ -7,6 +7,9 @@ RUN apt-get update \
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONIOENCODING=utf-8 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
     TZ=Asia/Ho_Chi_Minh
 
 WORKDIR /app
