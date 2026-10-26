@@ -1,0 +1,4 @@
+# Target la Linux container -> giu LF cho moi file text
+* text=auto eol=lf
+*.png binary
+*.jpg binary

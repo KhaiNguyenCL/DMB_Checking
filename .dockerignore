@@ -1,0 +1,14 @@
+.git
+.github
+.vscode
+venv/
+__pycache__/
+*.pyc
+.env
+data/*.json
+logs/
+*.md
+*.bat
+*.ps1
+bitrix-api-test/
+grafana/

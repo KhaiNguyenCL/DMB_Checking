@@ -1,0 +1,18 @@
+apiVersion: 1
+
+datasources:
+  - name: DMB Postgres
+    type: postgres
+    uid: dmb-postgres
+    access: proxy
+    url: ${DMB_DB_HOST}
+    database: ${DMB_DB_NAME}
+    user: ${DMB_DB_USER}
+    isDefault: true
+    editable: false
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData:
+      password: ${DMB_DB_PASSWORD}

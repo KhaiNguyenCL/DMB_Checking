@@ -1,164 +1,73 @@
-# Copilot Instructions for API Scraping & Automation
+# Copilot Instructions — DMB Device Monitor
 
 ## Project Overview
-This is a **learning project** about authenticated API scraping using Python. The codebase demonstrates:
-- Cookie-based authentication with `requests`
-- Automated login with Selenium WebDriver
-- DataTables pagination handling
-- Data comparison and email notifications
-- Task scheduling for daily automated runs
 
-## Architecture & Data Flow
+Dịch vụ monitor màn hình menu (DMB) chạy bằng Docker trên Linux: fetch API
+YouFrame mỗi 5 phút, lưu PostgreSQL, cảnh báo Bitrix24, xem bằng Grafana.
 
-### Three Core Authentication Methods
-The project implements three distinct cookie acquisition strategies:
+Không phải project học tập, không có Selenium, không có cookie auth, không có
+email. Nếu bạn thấy tài liệu nào nói về những thứ đó thì nó đã lỗi thời.
 
-1. **Selenium WebDriver** (`auto_login_selenium.py`) - Primary automated approach
-   - Launches Chrome browser, fills login form, extracts session cookies
-   - Used by `run_auto.bat` for fully automated daily runs
-   - Handles headless mode for Task Scheduler execution
+## Architecture
 
-2. **Browser Cookie Extraction** (`extract_browser_cookie.py`)
-   - Uses `browser-cookie3` to read cookies from running Chrome/Firefox
-   - Fast alternative requiring manual login once per browser session
-   - Updates `config.py` automatically after extraction
-
-3. **POST Request Login** (`login_with_requests.py`)
-   - Direct POST request to login endpoint with credentials
-   - Session-based approach - stores cookies in session object
-   - Fallback method when Selenium/browser extraction unavailable
-
-### Data Pipeline
 ```
-auto_login_selenium.py → (gets JSESSIONID cookie)
-    ↓
-config.py (stores cookie)
-    ↓
-fetch_data.py (API pagination loop) → clone_list_latest.json
-    ↓
-compare_data.py (compares latest vs sample)
-    ↓
-send_email_notification.py (notifies on changes)
+app/settings.py   → đọc toàn bộ cấu hình từ biến môi trường
+app/dmb_api.py    → GET /api/cloneList, parse mảng 14 phần tử thành dict
+app/db.py         → psycopg3, UPSERT devices + query event
+app/notifier.py   → POST im.message.add lên Bitrix webhook
+app/monitor.py    → vòng lặp: fetch → lọc → ghi DB → gửi tin → sleep
+sql/001_schema.sql → devices, status_events, fetch_runs + trigger + 2 view
 ```
 
-## Key Configuration & Patterns
+Luồng: `monitor.run_cycle()` gọi `dmb_api.fetch_devices()`, lọc theo
+`settings.REGIONS` và `data/Exception_list.txt`, rồi `db.sync_devices()`.
+Trigger `devices_log_status_trg` trong PostgreSQL tự sinh `status_events` khi
+status đổi — **không** tự phát hiện transition trong Python.
 
-### Config Files Structure
-- **`config.py`** - API credentials, headers, pagination settings (shared across tools)
-  - `API_URL`: Target API endpoint with self-signed certificate
-  - `COOKIE`: JSESSIONID value (updated by automation scripts)
-  - `HEADERS`: Browser mimicry with proper User-Agent and Referer
-  - `PAGINATION`: Set to 100 records/request to minimize API hits
+## Quy tắc khi sửa code
 
-- **`config_auto.py`** - Selenium automation credentials
-  - `LOGIN_URL`, `USERNAME`, `PASSWORD`, `HEADLESS_MODE`
-  - Separate from API config to avoid credential exposure
+- **Cấu hình chỉ qua biến môi trường.** Không hardcode URL, token, mật khẩu.
+  Thêm biến mới thì phải thêm vào cả `app/settings.py` và `.env.example`.
+- **Không gửi params `columns[]` khi gọi API.** Gửi vào sẽ kích hoạt phân trang
+  không ổn định và mất ~1% record mỗi lần fetch. Hiện tại 1 request lấy hết 1786.
+- **Khoá thiết bị là index 12**, không phải 13 (có bản ghi 2 cột này lệch nhau).
+- **Phát hiện chuyển trạng thái để ở DB trigger**, đừng chuyển sang Python.
+- **`status_changed_at` là lúc monitor ghi nhận**, không phải lúc thiết bị rớt.
+  Muốn tính thời gian offline thực tế thì dùng `last_seen`.
+- Thiết bị không còn trong feed thì hạ `is_present`, **không** đổi `status`.
+- Fetch lỗi không được phép làm mất dữ liệu đang có trong `devices`.
+- Comment và log viết bằng tiếng Việt không dấu, khớp với code hiện có.
 
-- **`config_email.py`** - Email notification settings
-  - SMTP configuration for Gmail or corporate servers
-  - Toggle flags: `NOTIFY_ON_CHANGE`, `NOTIFY_DAILY_SUMMARY`
+## Index của record API
 
-### DataTables API Specifics
-The target API uses DataTables Server-side Processing format:
-```python
-# Required parameters in build_params() function:
-params = {
-    "draw": 2,              # DataTables counter
-    "start": start,         # Pagination offset
-    "length": length,       # Records per page (max 100)
-    "columns[i][data]": i   # Column definitions (13 columns total)
-}
-```
-This 13-column structure is hardcoded in `fetch_data.py:build_params()` - change only if API schema changes.
+Mỗi record là mảng 14 phần tử:
 
-## Common Tasks & Workflows
+| idx | nội dung | idx | nội dung |
+|---|---|---|---|
+| 1 | name | 7 | brand |
+| 2 | status (On/Off) | 8 | region |
+| 3 | device_type | 9 | model |
+| 4 | fw_version | 10 | menu |
+| 5 | health | 12 | **device_id (khoá)** |
+| 6 | last_seen (giờ local thiết bị) | 13 | device_id phụ, không tin |
 
-### Adding New Fields to Collected Data
-1. The API returns records as lists (not dictionaries) due to DataTables format
-2. To add field mapping, update `fetch_data.py:fetch_all_data()` before `all_data.append()`
-3. Also update `compare_data.py` tuple-based comparison logic if needed
+## Lệnh hay dùng
 
-### Debugging Authentication Issues
-- **401 Errors**: Cookie expired, re-run `auto_login_selenium.py` or use `extract_browser_cookie.py`
-- **SSL Certificate Errors**: `verify=False` in `requests.get()` is intentional for self-signed certs
-- **Selenium timeouts**: Check `LOGIN_URL`, username/password in `config_auto.py`
-
-### Scheduling with Task Scheduler (Windows)
-- `run_auto.bat` encapsulates full workflow with error handling
-- Must activate venv in batch: `call venv\Scripts\activate.bat`
-- Log output to `logs/run_history.log` for debugging
-
-### Testing Locally
-```powershell
-# Activate venv
-.\venv\Scripts\activate
-
-# Test cookie extraction
-python auto_login_selenium.py
-
-# Test API fetch
-python fetch_data.py
-
-# Test comparison
-python compare_data.py
+```bash
+docker compose up -d --build
+docker compose logs -f monitor
+docker compose exec postgres psql -U dmb -d dmb -c "SELECT * FROM v_offline_now;"
+docker compose exec monitor python -c "from app import notifier; print(notifier.send_test())"
 ```
 
-## Code Conventions
+Chạy một chu trình đơn lẻ để debug:
 
-### Function Documentation Pattern
-Every function includes docstring with "Tham số" (Parameters), "Trả về" (Returns), and Vietnamese comments:
-```python
-def build_params(start, length):
-    """
-    Xây dựng parameters cho API request
-    Tham số: start (int), length (int)
-    Trả về: dict
-    """
+```bash
+docker compose exec -T monitor python - <<'EOF'
+from app import db, monitor
+monitor.setup_logging()
+conn = db.connect()
+r = monitor.run_cycle(conn, monitor.load_exception_list(), first_run=False)
+print(r["stored"], "thiet bi,", len(r["events"]), "event")
+EOF
 ```
-Maintain this bilingual style (Python code + Vietnamese comments) for consistency.
-
-### Error Handling Pattern
-- Silent failures with return `None`: `load_json_file()`, `login_and_get_cookies()`
-- Always check returns before using: `if not data: return`
-- Print user-friendly emoji messages for CLI feedback (✅, ❌, 🔄)
-
-### File I/O Pattern
-- JSON files always read/write with `encoding="utf-8"`
-- Data structure: `{"data": [[...], [...]], "fetch_time": "..."}`
-- Paths use `os.path.join(OUTPUT_DIR, filename)` for cross-platform compatibility
-
-## External Dependencies
-
-### Critical Libraries
-- `requests`: HTTP client with SSL ignore capability (`urllib3.disable_warnings()`)
-- `selenium`: Browser automation with `webdriver-manager` for auto ChromeDriver download
-- `browser-cookie3`: Cookie extraction from system browsers
-
-### SSL Certificate Handling
-The target API (`34.64.189.31`) uses self-signed certificate. All requests intentionally set:
-```python
-response = requests.get(url, verify=False, timeout=30)
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-```
-This is not a security vulnerability - it's a workaround for internal/dev APIs.
-
-## File Organization
-- `logs/` - Task Scheduler history (created dynamically)
-- `data/` - JSON outputs
-  - `clone_list_sample.json` - Baseline for comparison
-  - `clone_list_latest.json` - Most recent fetch
-- Root scripts are runnable: `python fetch_data.py` from project root
-
-## Important Edge Cases
-
-1. **Empty JSON Files**: `load_json_file()` returns `None` if file doesn't exist - handle explicitly
-2. **Data Comparison Logic**: Uses set operations on tuples - works only if records are hashable lists
-3. **Pagination Loop**: Never updates `start` parameter when `total_records` changes mid-fetch
-4. **Email Attachments**: Not implemented - only HTML body supported
-
-## Documentation Structure
-- `INDEX.md` - Entry point with links to all guides
-- `README.md` - Detailed 300+ line tutorial on authentication concepts
-- `AUTO_COOKIE.md` - Comparison of three cookie methods
-- `EXERCISES.md` - Hands-on learning exercises
-- All docs include Vietnamese + English with emojis for visual learning

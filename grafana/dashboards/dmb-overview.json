@@ -1,0 +1,288 @@
+{
+  "uid": "dmb-overview",
+  "title": "DMB Device Monitor",
+  "description": "Trang thai man hinh DMB: so thiet bi offline, lich su chuyen trang thai, suc khoe cua chinh monitor.",
+  "tags": ["dmb", "monitoring"],
+  "timezone": "Asia/Ho_Chi_Minh",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Thiet bi dang offline",
+      "datasource": { "type": "postgres", "uid": "dmb-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Offline\" FROM devices WHERE status = 'Off' AND is_present"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#0ca30c", "value": null },
+              { "color": "#fab219", "value": 1 },
+              { "color": "#d03b3b", "value": 10 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Tong thiet bi theo doi",
+      "datasource": { "type": "postgres", "uid": "dmb-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Thiet bi\" FROM devices WHERE is_present"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0 },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Lan fetch thanh cong gan nhat",
+      "description": "Qua 10 phut ma chua co lan fetch thanh cong nghia la monitor dang co van de.",
+      "datasource": { "type": "postgres", "uid": "dmb-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - max(finished_at))), 999999) AS \"Cach day\" FROM fetch_runs WHERE ok"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#0ca30c", "value": null },
+              { "color": "#fab219", "value": 600 },
+              { "color": "#d03b3b", "value": 1800 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Fetch loi (24h)",
+      "datasource": { "type": "postgres", "uid": "dmb-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Loi\" FROM fetch_runs WHERE NOT ok AND finished_at > now() - INTERVAL '24 hours'"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#0ca30c", "value": null },
+              { "color": "#fab219", "value": 1 },
+              { "color": "#d03b3b", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "So thiet bi offline theo thoi gian",
+      "datasource": { "type": "postgres", "uid": "dmb-postgres" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at AS time, offline_count AS \"Offline\" FROM fetch_runs WHERE ok AND offline_count IS NOT NULL AND $__timeFilter(started_at) ORDER BY started_at"
+        }
+      ],
+      "options": {
+        "legend": { "showLegend": false, "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "color": { "mode": "fixed", "fixedColor": "#3987e5" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "pointSize": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "gradientMode": "none",
+            "axisGridShow": true,
+            "axisBorderShow": false,
+            "axisLabel": "Thiet bi offline"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Dang offline",
+      "datasource": { "type": "postgres", "uid": "dmb-postgres" },
+      "gridPos": { "h": 11, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT name AS \"Thiet bi\", menu AS \"Menu\", last_seen AS \"Last seen\", EXTRACT(EPOCH FROM (now() - COALESCE(last_seen, status_changed_at))) AS \"Offline bao lau\", status_changed_at AS \"Monitor ghi nhan\" FROM devices WHERE status = 'Off' AND is_present ORDER BY COALESCE(last_seen, status_changed_at)"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [{ "displayName": "Offline bao lau", "desc": true }]
+      },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Offline bao lau" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "decimals", "value": 0 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Thiet bi hay rot (7 ngay)",
+      "description": "Dem so lan chuyen trang thai. Nhieu lan = ket noi khong on dinh, khong phai mat han.",
+      "datasource": { "type": "postgres", "uid": "dmb-postgres" },
+      "gridPos": { "h": 11, "w": 12, "x": 12, "y": 14 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT d.name AS \"Thiet bi\", count(*) AS \"So lan doi trang thai\" FROM status_events e JOIN devices d USING (device_id) WHERE e.changed_at > now() - INTERVAL '7 days' AND e.old_status IS NOT NULL GROUP BY d.name ORDER BY 2 DESC LIMIT 30"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [{ "displayName": "So lan doi trang thai", "desc": true }]
+      },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Lich su chuyen trang thai",
+      "datasource": { "type": "postgres", "uid": "dmb-postgres" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 25 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT e.changed_at AS \"Thoi diem\", d.name AS \"Thiet bi\", COALESCE(e.old_status, '(lan dau)') AS \"Tu\", e.new_status AS \"Sang\", e.notified AS \"Da gui Bitrix\" FROM status_events e JOIN devices d USING (device_id) WHERE $__timeFilter(e.changed_at) ORDER BY e.changed_at DESC LIMIT 500"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [{ "displayName": "Thoi diem", "desc": true }]
+      },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Sang" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "Off": { "text": "Off", "color": "#d03b3b", "index": 0 } } },
+                  { "type": "value", "options": { "On": { "text": "On", "color": "#0ca30c", "index": 1 } } }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
