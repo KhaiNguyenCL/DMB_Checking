@@ -486,28 +486,40 @@ Restart nhanh (dưới 15 phút) vẫn chạy tiếp bình thường và báo ri
 
 ### Mật khẩu đúng mà không đăng nhập được Grafana
 
-`GF_SECURITY_ADMIN_PASSWORD` **chỉ có tác dụng lúc Grafana khởi tạo database lần
-đầu**. Sau đó user `admin` nằm trong volume `grafana-data`, và mật khẩu trong DB
-thắng biến môi trường — sửa `.env` rồi restart sẽ không đổi được gì.
+**Đã xử lý tự động**, nhưng nên hiểu vì sao để khỏi mất thời gian lần sau.
 
-Xảy ra khi `up` một lần với mật khẩu placeholder rồi mới sửa `.env`.
+`GF_SECURITY_ADMIN_PASSWORD` của Grafana **chỉ có tác dụng lúc khởi tạo database
+lần đầu**. Sau đó user `admin` nằm trong volume `grafana-data`, và mật khẩu
+trong DB thắng biến môi trường — sửa `.env` rồi restart sẽ không đổi được gì.
+
+Nay entrypoint của container Grafana tự đặt lại mật khẩu admin theo `.env` mỗi
+lần khởi động (chạy **trước** khi server lên, nên không có hai tiến trình cùng
+ghi file SQLite). Nghĩa là:
+
+```bash
+nano .env                  # sua GRAFANA_ADMIN_PASSWORD
+docker compose up -d       # co hieu luc ngay
+```
+
+Log sẽ có:
+
+```
+[init] dat lai mat khau admin theo GRAFANA_ADMIN_PASSWORD trong .env
+Admin password changed successfully ✔
+```
+
+Muốn tự quản mật khẩu trên UI và không bị ghi đè thì đặt
+`GRAFANA_FORCE_ADMIN_PASSWORD=false`.
+
+Nếu cần đặt lại bằng tay:
 
 ```bash
 docker compose exec grafana grafana cli admin reset-admin-password 'mat-khau-moi'
 ```
 
-Hoặc xoá volume cho khởi tạo lại. An toàn: volume này chỉ chứa tài khoản user và
-tuỳ chọn UI; datasource và dashboard provision lại từ file, lịch sử thiết bị nằm
-ở volume Postgres riêng.
-
-```bash
-docker compose down
-docker volume rm <project>_grafana-data    # docker volume ls de xem ten
-docker compose up -d
-```
-
-`POSTGRES_PASSWORD` cũng y như vậy — chỉ áp dụng lúc khởi tạo. Nếu đã đổi `.env`
-sau lần `up` đầu:
+`POSTGRES_PASSWORD` cũng chỉ áp dụng lúc khởi tạo, nhưng **không** được đồng bộ
+tự động (đổi mật khẩu DB của một hệ thống đang chạy thì rủi ro hơn). Nếu đã sửa
+`.env` sau lần `up` đầu:
 
 ```bash
 docker compose exec postgres psql -U dmb -d dmb -c "ALTER USER dmb PASSWORD 'mat-khau-trong-env';"

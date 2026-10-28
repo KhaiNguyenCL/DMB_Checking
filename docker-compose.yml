@@ -83,6 +83,25 @@ services:
       # huu DB thi Viewer co the GHI vao database.
       DMB_DB_USER: ${GRAFANA_DB_USER:-grafana_ro}
       DMB_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?can dat GRAFANA_DB_PASSWORD trong .env}
+      # true = moi lan khoi dong, dat lai mat khau admin theo .env.
+      # Can thiet vi GF_SECURITY_ADMIN_PASSWORD chi co tac dung LUC KHOI TAO
+      # database lan dau; sau do mat khau nam trong volume grafana-data va
+      # sua .env khong con tac dung. Dat false neu muon doi mat khau tren UI.
+      GRAFANA_FORCE_ADMIN_PASSWORD: ${GRAFANA_FORCE_ADMIN_PASSWORD:-true}
+    # Dong bo mat khau admin TRUOC khi server chay, de khong co hai tien trinh
+    # cung ghi file SQLite cua Grafana. Chi chay khi DB da ton tai - lan khoi
+    # tao dau tien thi GF_SECURITY_ADMIN_PASSWORD da lo viec do.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ "$${GRAFANA_FORCE_ADMIN_PASSWORD}" = "true" ] && [ -f /var/lib/grafana/grafana.db ]; then
+          echo "[init] dat lai mat khau admin theo GRAFANA_ADMIN_PASSWORD trong .env"
+          /usr/share/grafana/bin/grafana cli --homepath=/usr/share/grafana \
+            admin reset-admin-password "$${GF_SECURITY_ADMIN_PASSWORD}" \
+            || echo "[init] khong dat lai duoc, van khoi dong binh thuong"
+        fi
+        exec /run.sh
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
