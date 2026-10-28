@@ -16,7 +16,8 @@ docker compose up -d --build
 docker compose logs -f monitor
 ```
 
-Grafana: `http://<server-ip>:3000` → dashboard **DMB / DMB Device Monitor** đã có sẵn.
+Grafana: `https://<server-ip>/` → dashboard **DMB / DMB Device Monitor** đã có sẵn.
+Truy cập qua Caddy với HTTPS, chỉ các dải IP trong `GRAFANA_ALLOWED_IPS` vào được.
 
 Hướng dẫn đầy đủ — cài Docker, mount đĩa, firewall, backup, bảo mật:
 **[DEPLOY.md](DEPLOY.md)**
@@ -46,6 +47,7 @@ app/
   monitor.py    vòng lặp chính
 sql/            schema: devices, status_events, fetch_runs + trigger + view
 grafana/        datasource và dashboard provision sẵn
+caddy/          reverse proxy: HTTPS + chặn IP
 data/           Exception_list.txt (blacklist device ID)
 ```
 

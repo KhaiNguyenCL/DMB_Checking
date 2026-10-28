@@ -1,0 +1,38 @@
+# Reverse proxy dat truoc Grafana.
+#
+# Tai sao khong dung "tls internal": cert tu dong cua Caddy cho dia chi IP
+# co nhieu ca loi da biet (client khong dat IP vao SNI, phai them default_sni,
+# co bao cao handshake that bai). Dung cert tu ky sinh san boi make-cert.sh
+# thi xac dinh hon va test duoc.
+#
+# Site address la ":443" chu khong phai mot hostname cu the, nen Caddy khong
+# phai khop ten - tranh han van de SNI noi tren.
+
+{
+	admin off
+	auto_https disable_redirects
+}
+
+:443 {
+	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
+
+	# Ghi lai IP nguon de truy duoc khi ai do bi chan oan:
+	#   docker compose logs caddy | grep 403
+	log {
+		output stdout
+		format console
+	}
+
+	# Chi cho phep cac dai IP trong GRAFANA_ALLOWED_IPS (cach nhau bang dau cach).
+	# Chan o day chu khong o ufw, vi port do Docker publish di vong qua ufw.
+	@khong_duoc_phep not remote_ip {$GRAFANA_ALLOWED_IPS}
+	respond @khong_duoc_phep "403 - dia chi IP cua ban khong duoc phep truy cap" 403
+
+	encode gzip
+	reverse_proxy grafana:3000
+}
+
+# HTTP chi de chuyen huong sang HTTPS, khong phuc vu noi dung.
+:80 {
+	redir https://{host}{uri} permanent
+}

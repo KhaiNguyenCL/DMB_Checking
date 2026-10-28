@@ -19,8 +19,15 @@ Bitrix24 khi thiết bị rớt, và xem dữ liệu bằng Grafana.
                                                      │  fetch_runs      │
                           ┌──────────────────┐      └────────┬─────────┘
                           │  dmb-grafana     │◄──────────────┘
-                          │  :3000           │
+                          │  (khong mo port) │
+                          └────────▲─────────┘
+                                   │
+                          ┌────────┴─────────┐
+                          │  dmb-caddy       │  HTTPS + chan IP
+                          │  :80 :443        │
                           └──────────────────┘
+                                   ▲
+                             nguoi xem (browser)
 ```
 
 ## Yêu cầu
@@ -148,7 +155,27 @@ Bắt buộc điền 3 giá trị (xem bảng ở mục dưới). Sinh mật kh�
 openssl rand -base64 24
 ```
 
-### 7. Chạy
+### 7. Sinh cert cho HTTPS
+
+Caddy dùng cert tự ký có IP (và hostname nếu có) nằm trong SAN. Truyền đúng địa
+chỉ mà người xem sẽ mở trên browser:
+
+```bash
+./caddy/make-cert.sh 10.0.0.10                      # chi IP
+./caddy/make-cert.sh 10.0.0.10 dmb.dnsvn.local      # IP + hostname noi bo
+```
+
+Cert có hiệu lực 10 năm, nằm trong `caddy/certs/` và **không** được commit lên git.
+
+Không dùng `tls internal` của Caddy vì cert tự động cho địa chỉ IP có nhiều ca
+lỗi đã biết (client không đặt IP vào SNI nên phải thêm `default_sni`, và có báo
+cáo handshake thất bại). Cert sinh sẵn thì xác định hơn.
+
+Browser sẽ cảnh báo cert tự ký một lần — bình thường với hệ thống nội bộ. Muốn
+hết cảnh báo thì cài `caddy/certs/cert.pem` vào trust store của máy client, hoặc
+thay bằng cert do CA nội bộ của công ty phát hành.
+
+### 8. Chạy
 
 ```bash
 docker compose up -d --build
@@ -172,30 +199,53 @@ Dong bo lai (lan chay dau tien): khong bao rieng le 29 event, gui tong hop trang
 Dòng cuối là điều cần thấy: DB mới **không** làm nó gửi 29 tin riêng lẻ, chỉ một
 tin tổng hợp trạng thái.
 
-### 8. Firewall
+### 9. Firewall và quyền xem Grafana
 
-Cảnh báo quan trọng: **port do Docker publish đi vòng qua ufw**, nên ufw không
-bảo vệ được chúng. Cách bảo vệ thật là không publish ra ngoài — mặc định
-`GRAFANA_BIND=127.0.0.1` đã làm việc đó, và Postgres không publish port nào.
+Hai việc riêng biệt: **ai vào được** (mạng) và **vào rồi làm được gì** (Grafana).
+
+**Ai vào được.** Grafana không publish port nào — chỉ Caddy publish 80/443, và
+Caddy chặn theo `GRAFANA_ALLOWED_IPS` trong `.env`:
+
+```
+GRAFANA_ALLOWED_IPS=10.10.0.0/24 10.20.5.17/32
+```
+
+Chặn ở Caddy chứ không ở ufw, vì **port do Docker publish đi vòng qua ufw** —
+đây là cái bẫy hay gặp. ufw chỉ còn việc bảo vệ SSH:
 
 ```bash
 sudo ufw allow OpenSSH
 sudo ufw enable
-sudo ufw status
 ```
 
-Truy cập Grafana qua SSH tunnel từ máy của bạn:
+Ai bị chặn thì tra IP mà Caddy thực sự thấy:
 
 ```bash
-ssh -L 3000:localhost:3000 user@<ip-server>
-# roi mo http://localhost:3000
+docker compose logs caddy | grep '"status": 403'
 ```
 
-Chỉ khi thật sự cần mở ra mạng nội bộ thì đặt `GRAFANA_BIND=0.0.0.0` trong
-`.env`, và nhớ rằng lúc đó ufw sẽ **không** chặn được — phải giới hạn ở firewall
-tầng mạng.
+Lưu ý khi tự test trên server: `curl` từ chính server sẽ hiện IP của Docker
+gateway (`172.x`) chứ không phải IP thật, nên dễ bị 403. Hãy test từ máy client.
 
-### 9. Backup tự động
+**Vào rồi làm được gì.** Tạo cho mỗi người một tài khoản role **Viewer** trong
+Grafana (Administration → Users → Invite). Viewer:
+
+- xem được mọi dashboard
+- **không** sửa hay lưu được dashboard
+- **không** vào được Explore, nên không tự viết SQL chạy vào Postgres
+- **không** thêm sửa được datasource
+
+Tài khoản `admin` chỉ bạn giữ. `GF_USERS_VIEWERS_CAN_EDIT` đã khoá `false`.
+
+Thêm một lớp nữa: `grafana/provisioning/dashboards/dashboards.yml` đặt
+`allowUiUpdates: false`, nên sửa dashboard trên UI sẽ **không được lưu** kể cả
+với admin — file trong git là nguồn duy nhất, dashboard được quản lý như code.
+
+Muốn người xem không phải đăng nhập gì cả thì đặt `GRAFANA_ANONYMOUS=true`:
+ai trong dải IP cho phép mở link là thấy dashboard với quyền Viewer, không phải
+quản lý mật khẩu cho từng người. Chỉ nên bật khi đã chặn IP.
+
+### 10. Backup tự động
 
 ```bash
 mkdir -p ~/dmb-backup
@@ -205,7 +255,7 @@ crontab -l
 
 Dump chỉ vài MB, giữ 30 ngày.
 
-### 10. Hoàn tất
+### 11. Hoàn tất
 
 ```bash
 sudo reboot              # kiem tra moi thu tu len lai
@@ -227,6 +277,8 @@ Không cần cron, systemd unit hay Task Scheduler cho chính monitor — cả 3
 | `POSTGRES_PASSWORD` | Bắt buộc, compose sẽ từ chối chạy nếu để trống. `openssl rand -base64 24` |
 | `GRAFANA_ADMIN_PASSWORD` | Bắt buộc, tương tự |
 | `BITRIX_WEBHOOK_URL` | **Tạo webhook mới** — cái cũ đã bị commit lên git, xem phần Bảo mật |
+| `GRAFANA_ALLOWED_IPS` | Bắt buộc, dải IP được phép xem Grafana, cách nhau bằng dấu cách |
+| `GRAFANA_ROOT_URL` | URL thật người dùng mở, ví dụ `https://10.0.0.10/` |
 | `BITRIX_CHAT_ID` | `911` (workgroup DMD Checking Notification), hoặc dùng `BITRIX_DIALOG_ID` |
 
 Các biến khác đều có giá trị mặc định hợp lý, xem chú thích trong `.env.example`.
@@ -247,7 +299,7 @@ docker compose exec postgres psql -U dmb -d dmb -c "SELECT * FROM v_flapping_7d 
 docker compose exec monitor python -c "from app import notifier; print(notifier.send_test())"
 ```
 
-Grafana: `http://<server-ip>:3000`, đăng nhập bằng `GRAFANA_ADMIN_USER` /
+Grafana: `https://<server-ip>/` (qua Caddy), đăng nhập bằng `GRAFANA_ADMIN_USER` /
 `GRAFANA_ADMIN_PASSWORD`. Dashboard **DMB / DMB Device Monitor** đã được
 provision sẵn, datasource cũng vậy — không cần cấu hình tay.
 
@@ -385,8 +437,9 @@ Restart nhanh (dưới 15 phút) vẫn chạy tiếp bình thường và báo ri
    webhook cũ**, tạo cái mới và chỉ đặt giá trị vào `.env`.
 2. **Không mở port Postgres ra internet.** `docker-compose.yml` mặc định không
    publish 5432. Nếu cần truy cập từ xa thì dùng SSH tunnel.
-3. **Chặn Grafana.** Port 3000 đang mở. Đặt sau reverse proxy có TLS, hoặc giới
-   hạn bằng firewall / chỉ bind `127.0.0.1` rồi SSH tunnel.
+3. **Grafana đã nằm sau Caddy** với HTTPS và chặn IP, và không publish port
+   riêng. Kiểm tra `GRAFANA_ALLOWED_IPS` đúng dải mạng của bạn, đừng để
+   `0.0.0.0/0`.
 4. **`config_auto.py` không còn được dùng** (API không cần đăng nhập). File này
    chứa mật khẩu dạng plaintext — nên xoá.
 5. `.env` nằm trong `.gitignore`. Đừng commit.

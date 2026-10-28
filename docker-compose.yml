@@ -57,8 +57,18 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?can dat GRAFANA_ADMIN_PASSWORD trong .env}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      # Viewer khong duoc sua dashboard. Grafana mac dinh da la false,
+      # dat tuong minh de khong ai vo tinh bat len.
+      GF_USERS_VIEWERS_CAN_EDIT: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Grafana nam sau reverse proxy nen can biet URL that de tao link dung
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-}
+      # Dat true de xem dashboard khong can dang nhap (role Viewer).
+      # Chi an toan khi da chan IP o Caddy.
+      GF_AUTH_ANONYMOUS_ENABLED: ${GRAFANA_ANONYMOUS:-false}
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
       # Dung cho file provisioning datasource
       DMB_DB_HOST: postgres:5432
@@ -69,11 +79,35 @@ services:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    # KHONG publish port. Chi vao duoc qua service caddy, noi co chan IP.
+    # Debug tai cho: docker compose exec caddy wget -qO- http://grafana:3000/api/health
+    expose:
+      - "3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    container_name: dmb-caddy
+    restart: unless-stopped
+    depends_on:
+      - grafana
+    environment:
+      # Danh sach dai IP duoc phep, cach nhau bang dau cach.
+      # Vi du: "10.10.0.0/24 10.20.5.17/32"
+      GRAFANA_ALLOWED_IPS: ${GRAFANA_ALLOWED_IPS:?can dat GRAFANA_ALLOWED_IPS trong .env}
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/certs:/etc/caddy/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
     ports:
-      # Mac dinh chi bind vao localhost cho an toan (dac biet khi VM nam o DMZ).
-      # Muon truy cap tu may khac thi dat GRAFANA_BIND=0.0.0.0 trong .env,
-      # va nho gioi han bang firewall.
-      - "${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
     logging:
       driver: json-file
       options:
@@ -83,3 +117,5 @@ services:
 volumes:
   pgdata:
   grafana-data:
+  caddy-data:
+  caddy-config:
