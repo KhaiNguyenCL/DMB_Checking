@@ -287,6 +287,7 @@ def main():
 
     conn = wait_for_db()
     db.init_schema(conn)
+    db.ensure_readonly_role(conn)
 
     resync, gap_minutes = decide_resync(conn)
 

@@ -36,6 +36,8 @@ services:
       - .env
     environment:
       POSTGRES_HOST: postgres
+      GRAFANA_DB_USER: ${GRAFANA_DB_USER:-grafana_ro}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?can dat GRAFANA_DB_PASSWORD trong .env}
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
     volumes:
       # Exception list mount read-write de sua truc tiep khong can rebuild image
@@ -69,12 +71,18 @@ services:
       # Chi an toan khi da chan IP o Caddy.
       GF_AUTH_ANONYMOUS_ENABLED: ${GRAFANA_ANONYMOUS:-false}
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # Dung trong grafana/provisioning/dashboards/dashboards.yml.
+      # true = admin sua duoc dashboard tren UI; false = chi sua qua file.
+      GRAFANA_ALLOW_UI_UPDATES: ${GRAFANA_ALLOW_UI_UPDATES:-true}
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
       # Dung cho file provisioning datasource
       DMB_DB_HOST: postgres:5432
       DMB_DB_NAME: ${POSTGRES_DB:-dmb}
-      DMB_DB_USER: ${POSTGRES_USER:-dmb}
-      DMB_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # Role CHI DOC, khong phai user cua monitor. Bat buoc: role Viewer cua
+      # Grafana goi duoc /api/ds/query voi SQL tu do, nen neu dung user chu so
+      # huu DB thi Viewer co the GHI vao database.
+      DMB_DB_USER: ${GRAFANA_DB_USER:-grafana_ro}
+      DMB_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?can dat GRAFANA_DB_PASSWORD trong .env}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro

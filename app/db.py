@@ -14,6 +14,7 @@ import logging
 from pathlib import Path
 
 import psycopg
+from psycopg import sql
 from psycopg.rows import dict_row
 
 from . import settings
@@ -64,6 +65,60 @@ def init_schema(conn) -> None:
         cur.execute(sql)
     conn.commit()
     log.info("Schema da san sang")
+
+
+def ensure_readonly_role(conn) -> bool:
+    """
+    Tao / cap nhat role CHI DOC cho Grafana. Idempotent, goi moi lan khoi dong.
+
+    Tai sao can: Grafana cho role Viewer goi /api/ds/query voi SQL tu do (UI
+    Explore bi an voi Viewer nhung API thi khong chan), va Grafana chuyen
+    nguyen SQL xuong Postgres. Neu datasource dung user chu so huu DB thi mot
+    Viewer co the CREATE/DELETE/DROP. Da kiem chung bang thuc nghiem.
+
+    Role nay chi co SELECT, va bi thu hoi quyen CREATE tren schema public.
+
+    Tra ve True neu da thiet lap, False neu bo qua (chua dat mat khau).
+    """
+    user = settings.GRAFANA_DB_USER
+    password = settings.GRAFANA_DB_PASSWORD
+
+    if not user or not password:
+        log.warning(
+            "Chua dat GRAFANA_DB_PASSWORD - bo qua viec tao role chi doc. "
+            "Grafana se phai dung user cua monitor, va luc do role Viewer co "
+            "the GHI vao DB qua /api/ds/query. Hay dat GRAFANA_DB_PASSWORD."
+        )
+        return False
+
+    ident = sql.Identifier(user)
+    dbname = settings.DB_PARAMS["dbname"]
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (user,))
+        if cur.fetchone() is None:
+            cur.execute(sql.SQL("CREATE ROLE {} LOGIN").format(ident))
+            log.info("Da tao role chi doc %r cho Grafana", user)
+
+        # Dat lai mat khau moi lan, de doi mat khau trong .env la co hieu luc
+        cur.execute(sql.SQL("ALTER ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB "
+                            "NOCREATEROLE PASSWORD {}")
+                    .format(ident, sql.Literal(password)))
+
+        cur.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}")
+                    .format(sql.Identifier(dbname), ident))
+        cur.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(ident))
+        cur.execute(sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA public TO {}").format(ident))
+        cur.execute(sql.SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+                            "GRANT SELECT ON TABLES TO {}").format(ident))
+
+        # Chan tao bang moi trong schema public (Postgres 15+ mac dinh da chan,
+        # dat tuong minh de khong phu thuoc phien ban)
+        cur.execute(sql.SQL("REVOKE CREATE ON SCHEMA public FROM {}").format(ident))
+
+    conn.commit()
+    log.info("Role chi doc %r da san sang (chi SELECT)", user)
+    return True
 
 
 def is_empty(conn) -> bool:

@@ -4,9 +4,10 @@ providers:
   - name: DMB
     type: file
     folder: DMB
-    # false = file trong git la nguon duy nhat. Sua tren UI se khong duoc luu,
-    # ke ca admin. Dashboard duoc quan ly nhu code.
-    allowUiUpdates: false
+    # true  = admin sua duoc dashboard tren UI (Viewer thi van khong, do role).
+    # false = file trong git la nguon duy nhat, KE CA admin cung khong luu duoc.
+    # Dieu khien bang GRAFANA_ALLOW_UI_UPDATES trong .env
+    allowUiUpdates: $GRAFANA_ALLOW_UI_UPDATES
     options:
       path: /var/lib/grafana/dashboards
       foldersFromFilesStructure: false

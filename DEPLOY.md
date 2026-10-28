@@ -233,18 +233,26 @@ Lưu ý khi tự test trên server: `curl` từ chính server sẽ hiện IP c�
 gateway (`172.x`) chứ không phải IP thật, nên dễ bị 403. Hãy test từ máy client.
 
 **Vào rồi làm được gì.** Tạo cho mỗi người một tài khoản role **Viewer** trong
-Grafana (Administration → Users → Invite). Viewer:
+Grafana (Administration → Users). Đã kiểm chứng bằng thực nghiệm, Viewer:
 
-- xem được mọi dashboard
-- **không** sửa hay lưu được dashboard
-- **không** vào được Explore, nên không tự viết SQL chạy vào Postgres
+- xem được mọi dashboard (HTTP 200)
+- **không** lưu được dashboard (HTTP 403)
 - **không** thêm sửa được datasource
+- bị ẩn Explore trên UI, **nhưng vẫn gọi được API `/api/ds/query` với SQL tự do**
+
+Điểm cuối là chỗ dễ hiểu sai và quan trọng nhất. Grafana cho phép Viewer
+"query data sources directly", và nó chuyển nguyên SQL xuống Postgres mà không
+kiểm duyệt. Nếu datasource dùng user chủ sở hữu database thì **một Viewer có thể
+`DROP TABLE`** — đã thử và tạo được bảng thật.
+
+Vì vậy datasource **phải** dùng role chỉ đọc `grafana_ro`, do monitor tự tạo lúc
+khởi động (`db.ensure_readonly_role`): chỉ có `SELECT`, bị thu hồi `CREATE` trên
+schema public. Sau khi đổi, Viewer vẫn đọc được dữ liệu nhưng `CREATE TABLE` và
+`DELETE` đều trả `permission denied`.
+
+Đặt `GRAFANA_DB_PASSWORD` trong `.env`; không có nó thì compose từ chối chạy.
 
 Tài khoản `admin` chỉ bạn giữ. `GF_USERS_VIEWERS_CAN_EDIT` đã khoá `false`.
-
-Thêm một lớp nữa: `grafana/provisioning/dashboards/dashboards.yml` đặt
-`allowUiUpdates: false`, nên sửa dashboard trên UI sẽ **không được lưu** kể cả
-với admin — file trong git là nguồn duy nhất, dashboard được quản lý như code.
 
 Muốn người xem không phải đăng nhập gì cả thì đặt `GRAFANA_ANONYMOUS=true`:
 ai trong dải IP cho phép mở link là thấy dashboard với quyền Viewer, không phải
@@ -284,6 +292,7 @@ Không cần cron, systemd unit hay Task Scheduler cho chính monitor — cả 3
 | `BITRIX_WEBHOOK_URL` | **Tạo webhook mới** — cái cũ đã bị commit lên git, xem phần Bảo mật |
 | `GRAFANA_ALLOWED_IPS` | Bắt buộc, dải IP được phép xem Grafana, cách nhau bằng dấu cách |
 | `GRAFANA_ROOT_URL` | URL thật người dùng mở, ví dụ `https://10.0.0.10/` |
+| `GRAFANA_DB_PASSWORD` | Bắt buộc. Mật khẩu role chỉ đọc `grafana_ro` mà Grafana dùng |
 | `BITRIX_CHAT_ID` | `911` (workgroup DMD Checking Notification), hoặc dùng `BITRIX_DIALOG_ID` |
 
 Các biến khác đều có giá trị mặc định hợp lý, xem chú thích trong `.env.example`.
@@ -393,6 +402,30 @@ Dialog đang dùng được in trong banner lúc khởi động:
 ```
 Bitrix    : bat (dialog chat911)
 ```
+
+### Sửa dashboard
+
+`GRAFANA_ALLOW_UI_UPDATES` trong `.env` quyết định cách sửa:
+
+| Giá trị | Admin sửa trên UI | Viewer | Nguồn sự thật |
+|---|---|---|---|
+| `true` (mặc định) | được | vẫn không, do role | DB của Grafana |
+| `false` | **không**, hiện "cannot be saved from the Grafana UI" | không | file JSON trong git |
+
+Để `true` thì admin sửa thoải mái; Viewer vẫn bị role chặn nên yêu cầu "không ai
+đổi được gì" vẫn giữ nguyên.
+
+Để `false` thì dashboard được quản lý như code — kể cả admin cũng không lưu được
+từ UI. Lúc đó muốn sửa thì làm thế này:
+
+1. Sửa trên UI cho vừa ý, rồi **Export → View JSON → Copy**
+2. Dán vào `grafana/dashboards/dmb-overview.json`
+3. Grafana tự nạp lại trong khoảng 10 giây khi nội dung file đổi
+
+Lưu ý khi để `true`: thay đổi trên UI nằm trong volume `grafana-data`, còn file
+JSON trong git sẽ cũ dần. Nếu xoá volume đó (cách sửa lỗi mật khẩu admin ở mục
+Sự cố) thì **mất các thay đổi UI**, Grafana dựng lại từ file. Nên sau khi sửa
+xong trên UI, vẫn nên export JSON về file và commit.
 
 ## Hành vi notification
 

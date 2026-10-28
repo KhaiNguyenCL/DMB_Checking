@@ -108,6 +108,17 @@ DB_PARAMS = {
 # (vi du can thong so sslmode). De trong thi dung DB_PARAMS o tren.
 DB_DSN = os.getenv("DMB_DB_DSN", "").strip()
 
+# Role CHI DOC danh cho Grafana.
+#
+# Bat buoc phai tach khoi user cua monitor: Grafana cho role Viewer goi
+# /api/ds/query voi SQL tu do (UI Explore bi an nhung API thi khong chan),
+# va Grafana chuyen nguyen SQL xuong Postgres. Neu datasource dung user chu
+# so huu DB thi mot Viewer co the DROP TABLE. Da kiem chung bang thuc nghiem.
+#
+# Monitor tu tao va cap quyen cho role nay luc khoi dong (xem db.ensure_readonly_role).
+GRAFANA_DB_USER = os.getenv("GRAFANA_DB_USER", "grafana_ro").strip()
+GRAFANA_DB_PASSWORD = os.getenv("GRAFANA_DB_PASSWORD", "").strip()
+
 # ---------------- Bitrix24 ----------------
 BITRIX_ENABLED = _bool("BITRIX_ENABLED", True)
 BITRIX_WEBHOOK_URL = os.getenv("BITRIX_WEBHOOK_URL", "").rstrip("/") + "/"

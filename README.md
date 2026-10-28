@@ -18,6 +18,7 @@ docker compose logs -f monitor
 
 Grafana: `https://<server-ip>/` → dashboard **DMB / DMB Device Monitor** đã có sẵn.
 Truy cập qua Caddy với HTTPS, chỉ các dải IP trong `GRAFANA_ALLOWED_IPS` vào được.
+Grafana đọc DB bằng role chỉ đọc `grafana_ro`, không phải user của monitor.
 
 Hướng dẫn đầy đủ — cài Docker, mount đĩa, firewall, backup, bảo mật:
 **[DEPLOY.md](DEPLOY.md)**
