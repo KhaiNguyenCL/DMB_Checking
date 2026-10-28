@@ -202,6 +202,16 @@ def offline_now(conn) -> list:
         return cur.fetchall()
 
 
+def last_successful_fetch(conn):
+    """
+    Thoi diem lan fetch thanh cong gan nhat, hoac None neu chua co lan nao.
+    Dung de do khoang trong quan sat khi monitor vua chay lai.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT max(finished_at) AS at FROM fetch_runs WHERE ok")
+        return cur.fetchone()["at"]
+
+
 def present_count(conn) -> int:
     """So thiet bi dang co trong feed."""
     with conn.cursor() as cur:

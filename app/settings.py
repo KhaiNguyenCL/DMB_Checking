@@ -5,6 +5,7 @@ Khong hardcode secret trong source nua - xem file .env.example
 
 import os
 import re
+from datetime import time as time_cls
 from zoneinfo import ZoneInfo
 
 
@@ -39,18 +40,42 @@ EXCEPTION_LIST_FILE = os.getenv("DMB_EXCEPTION_LIST", "data/Exception_list.txt")
 # ---------------- Vong lap ----------------
 INTERVAL = _int("DMB_INTERVAL_SECONDS", 300)
 
-# Quiet hours: ghi DB binh thuong nhung khong gui notification
-QUIET_START = _int("DMB_QUIET_START_HOUR", 22)
-QUIET_END = _int("DMB_QUIET_END_HOUR", 5)
+
+def _hhmm(name: str, default: str) -> time_cls:
+    raw = os.getenv(name, default).strip()
+    try:
+        hh, mm = raw.split(":")
+        return time_cls(int(hh), int(mm))
+    except (ValueError, AttributeError):
+        hh, mm = default.split(":")
+        return time_cls(int(hh), int(mm))
+
+
+# Khung gio GUI notification. Ngoai khung nay van fetch va ghi DB day du,
+# chi khong gui tin - thiet bi nao con offline se nam trong tong hop dau ngay.
+# Dat bang nhau (vi du 00:00-00:00) de gui 24/7.
+NOTIFY_FROM = _hhmm("DMB_NOTIFY_FROM", "08:00")
+NOTIFY_TO = _hhmm("DMB_NOTIFY_TO", "18:00")
+
+# Khi monitor dung lau hon so phut nay roi chay lai, lan fetch dau tien duoc
+# coi la DONG BO LAI chu khong phai phat hien chuyen trang thai: cac thiet bi
+# rot trong luc khong ai quan sat se khong gui bao rieng le, thay vao do gui
+# mot tin tong hop trang thai. Dat du lon de restart nhanh khong bi coi la gap.
+RESYNC_GAP_MINUTES = _int("DMB_RESYNC_GAP_MINUTES", 15)
 
 # Tong hop dau ngay: liet ke tat ca thiet bi dang Off (thay cho co che
 # xoa state file cu - khong con can xoa state vi DB da persistent)
 DAILY_SUMMARY_AT = os.getenv("DMB_DAILY_SUMMARY_AT", "08:00").strip()
 DAILY_SUMMARY_ENABLED = _bool("DMB_DAILY_SUMMARY_ENABLED", True)
 
-# Lan dau chay tren DB rong: co gui notification cho toan bo thiet bi Off khong?
-# Mac dinh False de khong spam ~23 tin luc khoi dong.
-NOTIFY_ON_FIRST_RUN = _bool("DMB_NOTIFY_ON_FIRST_RUN", False)
+# Sau khi dong bo lai (chay lan dau, hoac dung lau roi chay lai): co gui
+# mot tin tong hop trang thai hien tai khong? Tin nay thay cho viec bao rieng
+# le tung thiet bi, de khong nhan nham "vua rot" voi "rot tu luc khong ai xem".
+NOTIFY_STATE_ON_RESYNC = _bool("DMB_NOTIFY_STATE_ON_RESYNC", True)
+
+# So thiet bi toi da liet ke trong mot tin nhan; phan con lai gom thanh
+# mot dong "va N thiet bi khac" de tin khong dai vo tan khi co su co lon.
+MAX_DEVICES_IN_MESSAGE = _int("DMB_MAX_DEVICES_IN_MESSAGE", 30)
 
 # Canh bao len Bitrix khi fetch that bai lien tiep N lan
 ALERT_AFTER_FAILURES = _int("DMB_ALERT_AFTER_FAILURES", 3)

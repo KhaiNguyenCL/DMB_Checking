@@ -101,11 +101,16 @@ def notify_newly_offline(events: list, total_devices: int) -> dict:
     if not events:
         return {"success": False, "error": "no events"}
 
+    shown = events[:settings.MAX_DEVICES_IN_MESSAGE]
     lines = []
-    for idx, e in enumerate(events, 1):
+    for idx, e in enumerate(shown, 1):
         tag = " — lần đầu ghi nhận" if e["old_status"] is None else ""
         lines.append("{}. {} — thấy lần cuối: {}{}".format(
             idx, e["name"] or e["device_id"], _fmt_last_seen(e["last_seen"]), tag))
+
+    rest = len(events) - len(shown)
+    if rest > 0:
+        lines.append("… và {} thiết bị khác (xem đầy đủ trên Grafana)".format(rest))
 
     message = (
         "🔴 THIẾT BỊ OFFLINE — {regions}\n\n"
@@ -123,22 +128,24 @@ def notify_newly_offline(events: list, total_devices: int) -> dict:
     return _post(message)
 
 
-def notify_daily_summary(offline_devices: list, total_devices: int) -> dict:
+def _state_summary(offline_devices: list, total_devices: int,
+                   title: str, note: str = "") -> dict:
     """
-    Tong hop dau ngay: liet ke TAT CA thiet bi dang Off.
-    Thay cho co che xoa state file cu de bao lai toan bo.
+    Tin tong hop trang thai: liet ke TAT CA thiet bi dang Off kem thoi gian
+    offline that su (tinh tu last_seen). Dung cho ca tong hop dau ngay va
+    tong hop sau khi dong bo lai.
     """
     ts = datetime.now(settings.LOCAL_TZ).strftime("%d/%m/%Y %H:%M")
+    tail = "\n\n" + note if note else ""
 
     if not offline_devices:
-        message = (
-            "✅ TỔNG HỢP ĐẦU NGÀY — {ts}\n\n"
-            "Tất cả {total} thiết bị đang online."
-        ).format(ts=ts, total=total_devices)
-        return _post(message)
+        return _post(
+            "✅ {title} — {ts}\n\nTất cả {total} thiết bị đang online.{tail}".format(
+                title=title, ts=ts, total=total_devices, tail=tail))
 
+    shown = offline_devices[:settings.MAX_DEVICES_IN_MESSAGE]
     lines = []
-    for idx, d in enumerate(offline_devices, 1):
+    for idx, d in enumerate(shown, 1):
         lines.append("{}. {} — offline {} (thấy lần cuối: {})".format(
             idx,
             d["name"] or d["device_id"],
@@ -146,13 +153,36 @@ def notify_daily_summary(offline_devices: list, total_devices: int) -> dict:
             _fmt_last_seen(d.get("last_seen")),
         ))
 
-    message = (
-        "⚠️ TỔNG HỢP ĐẦU NGÀY — {ts}\n\n"
+    rest = len(offline_devices) - len(shown)
+    if rest > 0:
+        lines.append("… và {} thiết bị khác (xem đầy đủ trên Grafana)".format(rest))
+
+    return _post(
+        "⚠️ {title} — {ts}\n\n"
         "Đang có {count}/{total} thiết bị offline:\n"
-        "{device_list}"
-    ).format(ts=ts, count=len(offline_devices), total=total_devices,
-             device_list="\n".join(lines))
-    return _post(message)
+        "{device_list}{tail}".format(
+            title=title, ts=ts, count=len(offline_devices),
+            total=total_devices, device_list="\n".join(lines), tail=tail))
+
+
+def notify_daily_summary(offline_devices: list, total_devices: int) -> dict:
+    """Tong hop dau ngay, gui mot lan moi ngay vao gio cau hinh."""
+    return _state_summary(offline_devices, total_devices, "TỔNG HỢP ĐẦU NGÀY")
+
+
+def notify_resync_summary(offline_devices: list, total_devices: int,
+                          gap_text: str) -> dict:
+    """
+    Tong hop sau khi dong bo lai. Gui thay cho viec bao rieng le tung thiet bi,
+    vi nhung thiet bi nay rot trong luc monitor khong chay nen khong the goi la
+    "vua offline".
+    """
+    return _state_summary(
+        offline_devices, total_devices,
+        "TRẠNG THÁI SAU KHI KHỞI ĐỘNG LẠI",
+        note=("ℹ️ Hệ thống vừa chạy lại sau {gap}. Các thiết bị rớt trong "
+              "khoảng thời gian đó không gửi báo riêng lẻ — xem mốc \"thấy lần "
+              "cuối\" ở trên để biết thời điểm rớt thật.").format(gap=gap_text))
 
 
 def notify_fetch_failure(streak: int, error: str) -> dict:

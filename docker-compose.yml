@@ -16,6 +16,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # Khong publish port ra ngoai. Muon ket noi tu may khac thi mo dong duoi:
     # ports:
     #   - "127.0.0.1:5432:5432"
@@ -65,7 +70,15 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      # Mac dinh chi bind vao localhost cho an toan (dac biet khi VM nam o DMZ).
+      # Muon truy cap tu may khac thi dat GRAFANA_BIND=0.0.0.0 trong .env,
+      # va nho gioi han bang firewall.
+      - "${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:

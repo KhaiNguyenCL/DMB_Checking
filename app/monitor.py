@@ -56,14 +56,33 @@ def load_exception_list():
         return set()
 
 
-def in_quiet_hours(now):
-    """Quiet hours vat qua nua dem, vi du 22:00 -> 05:00."""
-    start = time_cls(settings.QUIET_START, 0)
-    end = time_cls(settings.QUIET_END, 0)
+def in_notify_window(now):
+    """
+    Co nam trong khung gio duoc phep gui notification khong.
+
+    Ho tro khung vat qua nua dem (vi du 20:00 -> 06:00). Dat FROM == TO
+    nghia la gui 24/7.
+    """
+    start = settings.NOTIFY_FROM
+    end = settings.NOTIFY_TO
+    if start == end:
+        return True
     t = now.time()
-    if start <= end:
+    if start < end:
         return start <= t < end
     return t >= start or t < end
+
+
+def _fmt_gap(minutes):
+    """Mo ta khoang trong quan sat cho de doc trong tin nhan."""
+    if minutes is None:
+        return "lần chạy đầu tiên"
+    minutes = int(minutes)
+    if minutes < 60:
+        return "{} phút không chạy".format(minutes)
+    if minutes < 1440:
+        return "{} giờ {:02d} phút không chạy".format(minutes // 60, minutes % 60)
+    return "{} ngày {} giờ không chạy".format(minutes // 1440, (minutes % 1440) // 60)
 
 
 def _parse_hhmm(value):
@@ -75,7 +94,7 @@ def _parse_hhmm(value):
         return None
 
 
-def run_cycle(conn, exception_ids, first_run):
+def run_cycle(conn, exception_ids, resync, gap_minutes=None):
     """Mot chu trinh: fetch -> loc -> ghi DB -> tim event. Tra ve thong ke."""
     run_id = db.start_run(conn)
 
@@ -118,29 +137,60 @@ def run_cycle(conn, exception_ids, first_run):
         "stored": len(kept),
         "offline": offline,
         "vanished": vanished,
-        "first_run": first_run,
+        "resync": resync,
+        "gap_minutes": gap_minutes,
     }
 
 
 def handle_notifications(conn, result):
+    """
+    Quyet dinh gui gi. Ba truong hop:
+
+    1. Dong bo lai (chay lan dau, hoac vua dung lau roi chay lai): cac event
+       sinh ra o day KHONG phai "vua offline" - thiet bi da rot tu luc monitor
+       khong chay. Khong bao rieng le, chi gui mot tin tong hop trang thai.
+    2. Ngoai khung gio gui: ghi DB day du nhung khong gui. Thiet bi con offline
+       se xuat hien trong tong hop dau ngay.
+    3. Binh thuong: bao rieng le tung thiet bi vua chuyen sang Off.
+    """
     events = result["events"]
+    now = datetime.now(settings.LOCAL_TZ)
+    in_window = in_notify_window(now)
+
+    if result["resync"]:
+        if events:
+            db.mark_notified(conn, [e["id"] for e in events])
+
+        gap_text = _fmt_gap(result.get("gap_minutes"))
+
+        if not settings.NOTIFY_STATE_ON_RESYNC:
+            log.info("Dong bo lai (%s): bo qua %d event, khong gui "
+                     "(DMB_NOTIFY_STATE_ON_RESYNC=false)", gap_text, len(events))
+            return
+
+        if not in_window:
+            log.info("Dong bo lai (%s): bo qua %d event, ngoai khung gio gui "
+                     "%s-%s nen khong gui tong hop", gap_text, len(events),
+                     settings.NOTIFY_FROM, settings.NOTIFY_TO)
+            return
+
+        offline = db.offline_now(conn)
+        log.info("Dong bo lai (%s): khong bao rieng le %d event, gui tong hop "
+                 "trang thai (%d thiet bi dang offline)",
+                 gap_text, len(events), len(offline))
+        notifier.notify_resync_summary(offline, db.present_count(conn), gap_text)
+        return
+
     if not events:
         return
 
-    if result["first_run"] and not settings.NOTIFY_ON_FIRST_RUN:
+    if not in_window:
+        # Danh dau da xu ly thay vi de ton lai, neu khong thi dung dau khung
+        # gio hom sau se ban ra mot loat tin don cua ca dem.
         db.mark_notified(conn, [e["id"] for e in events])
-        log.info("Lan chay dau tien: danh dau %d event la da xu ly, khong gui "
-                 "(dat DMB_NOTIFY_ON_FIRST_RUN=true neu muon gui)", len(events))
-        return
-
-    if in_quiet_hours(datetime.now(settings.LOCAL_TZ)):
-        # Danh dau da xu ly thay vi de ton lai, neu khong thi dung 05:00 se
-        # ban ra mot loat tin don cua ca dem. Thiet bi nao con Off se xuat
-        # hien trong tong hop dau ngay.
-        db.mark_notified(conn, [e["id"] for e in events])
-        log.info("Phat hien %d thiet bi vua offline nhung dang trong quiet hours "
-                 "(%02d:00-%02d:00) - khong gui, se nam trong tong hop dau ngay",
-                 len(events), settings.QUIET_START, settings.QUIET_END)
+        log.info("Phat hien %d thiet bi vua offline nhung ngoai khung gio gui "
+                 "(%s-%s) - khong gui, se nam trong tong hop dau ngay",
+                 len(events), settings.NOTIFY_FROM, settings.NOTIFY_TO)
         return
 
     res = notifier.notify_newly_offline(events, result["stored"])
@@ -169,6 +219,40 @@ def maybe_daily_summary(conn, last_sent_date, summary_time):
     return today
 
 
+def decide_resync(conn, now=None):
+    """
+    Lan fetch dau tien sau khi khoi dong co phai la DONG BO LAI khong?
+
+    Thiet bi rot trong luc monitor khong chay thi khong phai "vua offline",
+    nen neu co khoang trong quan sat thi khong bao rieng le tung thiet bi.
+
+    Tra ve (resync, gap_minutes). gap_minutes la None khi chua tung fetch.
+    """
+    now = now or datetime.now(settings.LOCAL_TZ)
+    last_ok = db.last_successful_fetch(conn)
+    gap_minutes = None
+    if last_ok is not None:
+        gap_minutes = (now - last_ok).total_seconds() / 60
+
+    if db.is_empty(conn):
+        log.info("DB dang rong - lan chay dau tien, se dong bo lai")
+        return True, gap_minutes
+
+    if gap_minutes is None:
+        log.info("Chua co lan fetch thanh cong nao - se dong bo lai")
+        return True, None
+
+    if gap_minutes > settings.RESYNC_GAP_MINUTES:
+        log.info("Lan fetch thanh cong cuoi cach day %.0f phut (nguong %d) - "
+                 "se dong bo lai, khong bao rieng le tung thiet bi",
+                 gap_minutes, settings.RESYNC_GAP_MINUTES)
+        return True, gap_minutes
+
+    log.info("Lan fetch thanh cong cuoi cach day %.0f phut - chay tiep binh thuong",
+             gap_minutes)
+    return False, gap_minutes
+
+
 def wait_for_db(max_wait=60):
     """Postgres trong docker co the chua san sang luc container nay khoi dong."""
     deadline = time.monotonic() + max_wait
@@ -192,8 +276,9 @@ def main():
     log.info("API       : %s", settings.API_URL)
     log.info("Region    : %s", ", ".join(settings.REGIONS) or "ALL")
     log.info("Chu ky    : %ds", settings.INTERVAL)
-    log.info("Quiet     : %02d:00 - %02d:00 (%s)", settings.QUIET_START,
-             settings.QUIET_END, settings.LOCAL_TZ.key)
+    log.info("Gui tin   : %s - %s (%s)%s", settings.NOTIFY_FROM, settings.NOTIFY_TO,
+             settings.LOCAL_TZ.key,
+             " [24/7]" if settings.NOTIFY_FROM == settings.NOTIFY_TO else "")
     log.info("Tong hop  : %s", settings.DAILY_SUMMARY_AT
              if settings.DAILY_SUMMARY_ENABLED else "tat")
     log.info("Bitrix    : %s", "bat (dialog {})".format(settings.BITRIX_DIALOG_ID or "CHUA DAT")
@@ -203,9 +288,7 @@ def main():
     conn = wait_for_db()
     db.init_schema(conn)
 
-    first_run = db.is_empty(conn)
-    if first_run:
-        log.info("DB dang rong - day la lan chay dau tien")
+    resync, gap_minutes = decide_resync(conn)
 
     summary_time = _parse_hhmm(settings.DAILY_SUMMARY_AT)
     last_summary_date = None
@@ -219,7 +302,7 @@ def main():
         cycle_start = time.monotonic()
 
         try:
-            result = run_cycle(conn, load_exception_list(), first_run)
+            result = run_cycle(conn, load_exception_list(), resync, gap_minutes)
 
             if failure_streak and alerted_failure:
                 log.info("Fetch da hoat dong lai sau %d lan loi", failure_streak)
@@ -228,7 +311,8 @@ def main():
 
             handle_notifications(conn, result)
             last_summary_date = maybe_daily_summary(conn, last_summary_date, summary_time)
-            first_run = False
+            resync = False
+            gap_minutes = None
 
         except Exception as exc:
             failure_streak += 1

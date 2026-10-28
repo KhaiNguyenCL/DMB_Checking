@@ -29,7 +29,9 @@ Mỗi 5 phút:
 3. UPSERT vào bảng `devices`; trigger PostgreSQL tự ghi `status_events` khi status đổi
 4. Thiết bị nào vừa chuyển sang `Off` thì gửi cảnh báo Bitrix24
 
-Thiết bị đã báo rồi thì không báo lại. 22:00–05:00 vẫn ghi DB nhưng không gửi tin.
+Thiết bị đã báo rồi thì không báo lại. Chỉ gửi tin trong khung 08:00–18:00 (ngoài
+khung vẫn ghi DB đầy đủ). Nếu monitor vừa dừng lâu rồi chạy lại thì không báo
+riêng lẻ mà gửi một tin tổng hợp trạng thái.
 08:00 mỗi ngày gửi tổng hợp toàn bộ thiết bị đang offline.
 
 ## Cấu trúc

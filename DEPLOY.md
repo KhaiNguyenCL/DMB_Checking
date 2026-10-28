@@ -178,17 +178,40 @@ Bitrix    : bat (dialog chat911)
 
 | Tình huống | Hành vi |
 |---|---|
-| Thiết bị On → Off | Gửi Bitrix ngay chu trình kế tiếp |
-| Thiết bị lần đầu thấy đã Off | Gửi, có ghi chú `(lan dau thay)` |
+| Thiết bị On → Off, trong khung giờ gửi | Gửi Bitrix ngay chu trình kế tiếp |
+| Thiết bị lần đầu thấy đã Off | Gửi, có ghi chú `lần đầu ghi nhận` |
 | Thiết bị vẫn Off nhiều chu trình | **Không** gửi lại |
-| Chạy lần đầu trên DB rỗng | Không gửi (đổi `DMB_NOTIFY_ON_FIRST_RUN=true` nếu muốn) |
-| Trong giờ 22:00–05:00 | Ghi DB bình thường, không gửi; sẽ xuất hiện trong tổng hợp đầu ngày |
+| **Ngoài khung giờ gửi** (mặc định ngoài 08:00–18:00) | Ghi DB bình thường, không gửi; thiết bị còn Off sẽ nằm trong tổng hợp đầu ngày |
+| **Vừa chạy lại sau khi dừng > 15 phút** | **Không** báo riêng lẻ. Gửi một tin tổng hợp trạng thái hiện tại |
+| Chạy lần đầu trên DB rỗng | Như trên: một tin tổng hợp, không báo riêng lẻ |
 | 08:00 mỗi ngày | Gửi tổng hợp toàn bộ thiết bị đang Off |
 | Gửi Bitrix thất bại | Giữ `notified=false`, tự thử lại chu trình sau (trong 6 giờ) |
 | Fetch lỗi 3 lần liên tiếp | Gửi cảnh báo "monitor không lấy được dữ liệu" |
+| Quá 30 thiết bị trong một tin | Liệt kê 30, phần còn lại gộp thành "… và N thiết bị khác" |
 
-Restart container **không** làm gửi lại thông báo cũ, vì state nằm trong DB chứ
-không phải file bị xoá lúc khởi động như bản cũ.
+### Khung giờ gửi
+
+`DMB_NOTIFY_FROM` / `DMB_NOTIFY_TO`, mặc định `08:00`–`18:00`. Ngoài khung này
+hệ thống **vẫn fetch và ghi DB đầy đủ** (Grafana thấy hết), chỉ không gửi tin.
+
+Lý do có khung giờ: các cửa hàng tắt màn hình khi đóng cửa, tạo ra một tràng
+thông báo mỗi chiều — và đó chính là thứ làm người ta bắt đầu bỏ qua cảnh báo.
+
+Đặt `DMB_NOTIFY_FROM` bằng `DMB_NOTIFY_TO` (ví dụ cả hai là `00:00`) để gửi 24/7.
+Khung vắt qua nửa đêm cũng được, ví dụ `20:00`–`06:00`.
+
+### Đồng bộ lại sau khi dừng
+
+`changed_at` của event là lúc **monitor nhìn thấy** thay đổi, không phải lúc
+thiết bị rớt. Nếu monitor dừng qua đêm, các thiết bị rớt tối hôm trước sẽ bị dồn
+thành một chùm "vừa offline" vào lúc khởi động — sai và gây hiểu nhầm.
+
+Nên khi khoảng trống giữa hai lần fetch thành công vượt `DMB_RESYNC_GAP_MINUTES`
+(mặc định 15 phút), chu trình đầu tiên được coi là **đồng bộ lại**: ghi đầy đủ
+vào DB nhưng không báo riêng lẻ, chỉ gửi một tin tổng hợp trạng thái kèm ghi chú
+giải thích. Cột "thấy lần cuối" trong tin cho biết thời điểm rớt thật.
+
+Restart nhanh (dưới 15 phút) vẫn chạy tiếp bình thường và báo riêng lẻ như thường.
 
 ## Bảo mật — việc cần làm
 
