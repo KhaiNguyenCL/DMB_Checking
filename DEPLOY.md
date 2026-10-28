@@ -149,11 +149,16 @@ cp .env.example .env
 nano .env
 ```
 
-Bắt buộc điền 3 giá trị (xem bảng ở mục dưới). Sinh mật khẩu mạnh:
+Bắt buộc điền (xem bảng ở mục dưới). Sinh mật khẩu mạnh **chỉ gồm chữ và số**:
 
 ```bash
-openssl rand -base64 24
+openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 32; echo
 ```
+
+Dùng `tr -dc 'A-Za-z0-9'` để loại các ký tự như `/`, `+`, `$`, `@`. Code đã xử
+lý được mật khẩu có ký tự đặc biệt, nhưng `$` vẫn có thể bị Docker Compose hoặc
+Grafana provisioning hiểu thành biến môi trường. Chữ và số thì không bao giờ
+gặp vấn đề ở bất kỳ lớp nào.
 
 ### 7. Sinh cert cho HTTPS
 
@@ -274,8 +279,8 @@ Không cần cron, systemd unit hay Task Scheduler cho chính monitor — cả 3
 
 | Biến | Ghi chú |
 |---|---|
-| `POSTGRES_PASSWORD` | Bắt buộc, compose sẽ từ chối chạy nếu để trống. `openssl rand -base64 24` |
-| `GRAFANA_ADMIN_PASSWORD` | Bắt buộc, tương tự |
+| `POSTGRES_PASSWORD` | Bắt buộc, compose từ chối chạy nếu trống. Chỉ dùng chữ và số |
+| `GRAFANA_ADMIN_PASSWORD` | Bắt buộc, tương tự. **Chỉ áp dụng lúc khởi tạo lần đầu** — xem mục Sự cố |
 | `BITRIX_WEBHOOK_URL` | **Tạo webhook mới** — cái cũ đã bị commit lên git, xem phần Bảo mật |
 | `GRAFANA_ALLOWED_IPS` | Bắt buộc, dải IP được phép xem Grafana, cách nhau bằng dấu cách |
 | `GRAFANA_ROOT_URL` | URL thật người dùng mở, ví dụ `https://10.0.0.10/` |
@@ -443,6 +448,79 @@ Restart nhanh (dưới 15 phút) vẫn chạy tiếp bình thường và báo ri
 4. **`config_auto.py` không còn được dùng** (API không cần đăng nhập). File này
    chứa mật khẩu dạng plaintext — nên xoá.
 5. `.env` nằm trong `.gitignore`. Đừng commit.
+
+## Sự cố thường gặp
+
+### Mật khẩu đúng mà không đăng nhập được Grafana
+
+`GF_SECURITY_ADMIN_PASSWORD` **chỉ có tác dụng lúc Grafana khởi tạo database lần
+đầu**. Sau đó user `admin` nằm trong volume `grafana-data`, và mật khẩu trong DB
+thắng biến môi trường — sửa `.env` rồi restart sẽ không đổi được gì.
+
+Xảy ra khi `up` một lần với mật khẩu placeholder rồi mới sửa `.env`.
+
+```bash
+docker compose exec grafana grafana cli admin reset-admin-password 'mat-khau-moi'
+```
+
+Hoặc xoá volume cho khởi tạo lại. An toàn: volume này chỉ chứa tài khoản user và
+tuỳ chọn UI; datasource và dashboard provision lại từ file, lịch sử thiết bị nằm
+ở volume Postgres riêng.
+
+```bash
+docker compose down
+docker volume rm <project>_grafana-data    # docker volume ls de xem ten
+docker compose up -d
+```
+
+`POSTGRES_PASSWORD` cũng y như vậy — chỉ áp dụng lúc khởi tạo. Nếu đã đổi `.env`
+sau lần `up` đầu:
+
+```bash
+docker compose exec postgres psql -U dmb -d dmb -c "ALTER USER dmb PASSWORD 'mat-khau-trong-env';"
+docker compose up -d
+```
+
+Lệnh trên chạy được không cần mật khẩu vì socket nội bộ của image Postgres dùng
+`trust`.
+
+### Monitor báo `failed to resolve host 'dmb'` / `Cho Postgres...` mãi
+
+Đã sửa trong code. Nguyên nhân cũ: mật khẩu chứa dấu `/` làm vỡ cú pháp URI của
+connection string, khiến libpq hiểu username thành host:
+
+```
+postgresql://dmb:R/b+C1...@postgres:5432/dmb
+  -> host='dmb'  port='R'  dbname='b+C1...@postgres:5432/dmb'
+```
+
+Nay `app/db.py` truyền tham số rời cho psycopg nên mọi ký tự đều an toàn. Nếu
+vẫn gặp thì bạn đang chạy code cũ — `git pull` rồi `docker compose up -d --build`.
+
+### Grafana trống trơn không có dữ liệu
+
+Chẩn đoán theo thứ tự:
+
+```bash
+docker compose ps
+docker compose logs monitor --tail 40
+
+# DB co du lieu khong (khong can mat khau)
+docker compose exec postgres psql -U dmb -d dmb -c   "SELECT (SELECT count(*) FROM devices) AS devices, (SELECT count(*) FROM fetch_runs) AS runs;"
+
+# Grafana noi duoc voi Postgres khong
+curl -sk -u admin:<mat-khau> https://<ip-server>/api/datasources/uid/dmb-postgres/health
+```
+
+Lệnh cuối phải ra `{"message":"Database Connection OK","status":"OK"}`.
+
+- `Chu trinh that bai` trong log → outbound bị chặn, xem lại bước 1
+- `devices=0` → monitor chưa fetch thành công lần nào
+- Có dữ liệu nhưng datasource lỗi → lệch mật khẩu Postgres, xem mục trên
+- 4 ô số có hiện nhưng biểu đồ trống → chỉ là khung thời gian. Đổi sang
+  **Last 1 hour**. Kiểm tra luôn `timedatectl` vì đồng hồ lệch làm Grafana lọc
+  theo "now" không thấy gì
+- Panel *Thiết bị hay rớt (7 ngày)* trống là bình thường, cần vài ngày dữ liệu
 
 ## Ghi chú về API nguồn
 

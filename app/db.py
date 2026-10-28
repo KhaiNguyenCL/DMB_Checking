@@ -46,8 +46,15 @@ ON CONFLICT (device_id) DO UPDATE SET
 
 
 def connect():
-    """Mo connection moi. autocommit=False de moi fetch la 1 transaction."""
-    return psycopg.connect(settings.DB_DSN, row_factory=dict_row)
+    """
+    Mo connection moi. autocommit=False de moi fetch la 1 transaction.
+
+    Dung tham so roi thay vi connection string, de mat khau co ky tu dac biet
+    (/, +, @, :) khong lam vo cu phap URI. Xem chu thich o settings.DB_PARAMS.
+    """
+    if settings.DB_DSN:
+        return psycopg.connect(settings.DB_DSN, row_factory=dict_row)
+    return psycopg.connect(row_factory=dict_row, **settings.DB_PARAMS)
 
 
 def init_schema(conn) -> None:

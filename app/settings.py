@@ -85,14 +85,28 @@ ALERT_AFTER_FAILURES = _int("DMB_ALERT_AFTER_FAILURES", 3)
 PENDING_MAX_AGE_HOURS = _int("DMB_PENDING_MAX_AGE_HOURS", 6)
 
 # ---------------- Database ----------------
-_DEFAULT_DSN = "postgresql://{u}:{p}@{h}:{port}/{db}".format(
-    u=os.getenv("POSTGRES_USER", "dmb"),
-    p=os.getenv("POSTGRES_PASSWORD", "dmb"),
-    h=os.getenv("POSTGRES_HOST", "postgres"),
-    port=os.getenv("POSTGRES_PORT", "5432"),
-    db=os.getenv("POSTGRES_DB", "dmb"),
-)
-DB_DSN = os.getenv("DMB_DB_DSN", _DEFAULT_DSN)
+# Tham so ket noi de RIENG, khong ghep thanh URI.
+#
+# Truoc day ghep "postgresql://user:pass@host:port/db" bang string format, va
+# no vo ngay khi mat khau co ky tu dac biet. Vi du mat khau sinh boi
+# `openssl rand -base64 24` chua dau "/", thi URI
+#   postgresql://dmb:R/b+C1...@postgres:5432/dmb
+# duoc libpq parse thanh host='dmb', port='R', dbname='b+C1...@postgres:5432/dmb'
+# vi dau "/" ket thuc phan authority -> loi "Servname not supported for ai_socktype".
+#
+# Truyen tham so roi cho psycopg thi khong con van de trich dan voi bat ky
+# mat khau nao.
+DB_PARAMS = {
+    "host": os.getenv("POSTGRES_HOST", "postgres"),
+    "port": os.getenv("POSTGRES_PORT", "5432"),
+    "user": os.getenv("POSTGRES_USER", "dmb"),
+    "password": os.getenv("POSTGRES_PASSWORD", "dmb"),
+    "dbname": os.getenv("POSTGRES_DB", "dmb"),
+}
+
+# Tuy chon: dat DMB_DB_DSN de dung nguyen mot connection string tu viet
+# (vi du can thong so sslmode). De trong thi dung DB_PARAMS o tren.
+DB_DSN = os.getenv("DMB_DB_DSN", "").strip()
 
 # ---------------- Bitrix24 ----------------
 BITRIX_ENABLED = _bool("BITRIX_ENABLED", True)
