@@ -7,7 +7,6 @@
 #
 # Site address la ":443" chu khong phai mot hostname cu the, nen Caddy khong
 # phai khop ten - tranh han van de SNI noi tren.
-
 {
 	admin off
 	auto_https disable_redirects
