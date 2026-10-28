@@ -25,37 +25,200 @@ Bitrix24 khi thiết bị rớt, và xem dữ liệu bằng Grafana.
 
 ## Yêu cầu
 
-- Linux server (bất kỳ distro có Docker)
+- Ubuntu Server 22.04 / 24.04 LTS (hoặc distro khác có Docker)
 - Docker Engine + Docker Compose v2
-- Server phải tiếp cận được `34.64.189.31` (HTTPS) và `erp.dnsvn.com`
+- Server phải tiếp cận được `34.64.189.31` (HTTPS) và `erp.dnsvn.com` (HTTPS)
+- Để cài đặt: cần thêm `archive.ubuntu.com`, `download.docker.com`, `github.com`
 
 Không cần Chrome, chromedriver, Selenium hay X server — đã bỏ hoàn toàn.
 
-## Cài đặt
+## Cài đặt từ đầu
+
+Runbook cho VM mới. Làm theo đúng thứ tự; bước 1 là bước dễ bị bỏ qua nhất và
+cũng là bước làm toàn bộ phần sau trở nên vô nghĩa nếu bỏ.
+
+### 1. Kiểm tra kết nối ra ngoài trước tiên
+
+Hệ thống này không host gì cho ai — nó chỉ đi lấy dữ liệu và đi gửi tin. Nếu
+outbound bị chặn (rất thường gặp với VM đặt ở DMZ) thì không có gì chạy được.
 
 ```bash
-git clone <repo> dmb-monitor && cd dmb-monitor
+curl -sk -o /dev/null -w "YouFrame API  : %{http_code}\n" --max-time 15 \
+  "https://34.64.189.31/api/cloneList?draw=1&start=0"
+curl -s  -o /dev/null -w "Bitrix        : %{http_code}\n" --max-time 15 \
+  "https://erp.dnsvn.com/"
+curl -s  -o /dev/null -w "Docker repo   : %{http_code}\n" --max-time 15 \
+  "https://download.docker.com/linux/ubuntu/gpg"
+curl -s  -o /dev/null -w "GitHub        : %{http_code}\n" --max-time 15 \
+  "https://github.com/"
+```
 
+Hai dòng đầu phải ra `200`. Nếu không thì xin mở firewall trước khi làm tiếp.
+Nếu `github.com` bị chặn thì bỏ qua — bước 5 có cách copy code không cần git.
+
+### 2. Thiết lập hệ điều hành
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y open-vm-tools ca-certificates curl git
+sudo timedatectl set-timezone Asia/Ho_Chi_Minh
+timedatectl          # kiem tra "NTP service: active" va dung mui gio
+```
+
+Đồng hồ đúng là điều kiện bắt buộc: khung giờ gửi tin, tổng hợp đầu ngày và
+việc tính giờ `last_seen` đều dựa vào nó.
+
+Nếu VM chạy trên VMware, `open-vm-tools` giúp vCenter shutdown đúng cách và
+nhìn thấy IP của VM.
+
+### 3. Mount đĩa dữ liệu vào /var/lib/docker
+
+Bỏ bước này thì Docker ghi hết vào đĩa hệ thống, còn đĩa dữ liệu nằm không.
+Làm **trước khi** cài Docker để thư mục còn rỗng.
+
+```bash
+lsblk                      # xac dinh dia du lieu, thuong la /dev/sdb
+sudo mkfs.ext4 /dev/sdb    # CHI chay khi chac chan dia nay con trong
+sudo mkdir -p /var/lib/docker
+
+# Dung UUID thay vi /dev/sdb, vi ten device co the doi sau khi reboot
+echo "UUID=$(sudo blkid -s UUID -o value /dev/sdb) /var/lib/docker ext4 defaults 0 2" \
+  | sudo tee -a /etc/fstab
+sudo mount -a
+df -h /var/lib/docker      # phai thay dung dung luong cua dia du lieu
+```
+
+### 4. Cài Docker Engine
+
+Dùng repo chính thức của Docker, **không** dùng gói `docker.io` của Ubuntu —
+gói đó cũ và thiếu plugin Compose v2.
+
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+
+sudo usermod -aG docker $USER && newgrp docker
+
+docker run --rm hello-world
+docker info | grep "Docker Root Dir"   # phai la /var/lib/docker tren dia du lieu
+```
+
+### 5. Lấy code
+
+```bash
+git clone https://github.com/KhaiNguyenCL/DMB_Checking.git ~/dmb && cd ~/dmb
+```
+
+Nếu server không ra được GitHub, đóng gói từ máy khác rồi copy qua:
+
+```bash
+# tren may co code
+git archive --format=tar.gz -o dmb.tar.gz HEAD
+scp dmb.tar.gz user@<ip-server>:~/
+
+# tren server
+mkdir -p ~/dmb && tar -xzf ~/dmb.tar.gz -C ~/dmb && cd ~/dmb
+```
+
+### 6. Cấu hình
+
+```bash
 cp .env.example .env
-nano .env            # xem phần "Cấu hình bắt buộc" bên dưới
+nano .env
+```
 
+Bắt buộc điền 3 giá trị (xem bảng ở mục dưới). Sinh mật khẩu mạnh:
+
+```bash
+openssl rand -base64 24
+```
+
+### 7. Chạy
+
+```bash
 docker compose up -d --build
 docker compose logs -f monitor
 ```
 
-Log chạy đúng sẽ trông như:
+Lần đầu build mất vài phút. Log chạy đúng sẽ trông như:
 
 ```
 DMB DEVICE MONITOR
 API       : https://34.64.189.31/api/cloneList
 Region    : Vietnam
 Chu ky    : 300s
-Quiet     : 22:00 - 05:00 (Asia/Ho_Chi_Minh)
+Gui tin   : 08:00:00 - 18:00:00 (Asia/Ho_Chi_Minh)
 Schema da san sang
-DB dang rong - day la lan chay dau tien
-Run #1 | API 1786 record | trong pham vi 533 | loai 9 | online 508 | offline 16 | event cho gui 16
-Lan chay dau tien: danh dau 16 event la da xu ly, khong gui
+DB dang rong - lan chay dau tien, se dong bo lai
+Run #1 | API 1799 record | trong pham vi 533 | loai 9 | online 495 | offline 29 | event cho gui 29
+Dong bo lai (lan chay dau tien): khong bao rieng le 29 event, gui tong hop trang thai
 ```
+
+Dòng cuối là điều cần thấy: DB mới **không** làm nó gửi 29 tin riêng lẻ, chỉ một
+tin tổng hợp trạng thái.
+
+### 8. Firewall
+
+Cảnh báo quan trọng: **port do Docker publish đi vòng qua ufw**, nên ufw không
+bảo vệ được chúng. Cách bảo vệ thật là không publish ra ngoài — mặc định
+`GRAFANA_BIND=127.0.0.1` đã làm việc đó, và Postgres không publish port nào.
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw enable
+sudo ufw status
+```
+
+Truy cập Grafana qua SSH tunnel từ máy của bạn:
+
+```bash
+ssh -L 3000:localhost:3000 user@<ip-server>
+# roi mo http://localhost:3000
+```
+
+Chỉ khi thật sự cần mở ra mạng nội bộ thì đặt `GRAFANA_BIND=0.0.0.0` trong
+`.env`, và nhớ rằng lúc đó ufw sẽ **không** chặn được — phải giới hạn ở firewall
+tầng mạng.
+
+### 9. Backup tự động
+
+```bash
+mkdir -p ~/dmb-backup
+( crontab -l 2>/dev/null; echo '0 2 * * * cd ~/dmb && /usr/bin/docker compose exec -T postgres pg_dump -U dmb dmb | gzip > ~/dmb-backup/dmb-$(date +\%F).sql.gz && find ~/dmb-backup -name "dmb-*.sql.gz" -mtime +30 -delete' ) | crontab -
+crontab -l
+```
+
+Dump chỉ vài MB, giữ 30 ngày.
+
+### 10. Hoàn tất
+
+```bash
+sudo reboot              # kiem tra moi thu tu len lai
+# sau khi reboot:
+docker compose ps        # ca 3 container phai Up
+df -h /var/lib/docker    # dia du lieu van mount dung
+```
+
+Nhớ **tháo ISO** khỏi CD/DVD của VM trong vCenter, nếu không có lần nó sẽ boot
+lại vào installer.
+
+Không cần cron, systemd unit hay Task Scheduler cho chính monitor — cả 3 service
+đều `restart: unless-stopped` nên tự lên lại sau reboot.
 
 ## Cấu hình bắt buộc trong `.env`
 

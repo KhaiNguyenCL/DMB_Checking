@@ -18,7 +18,8 @@ docker compose logs -f monitor
 
 Grafana: `http://<server-ip>:3000` → dashboard **DMB / DMB Device Monitor** đã có sẵn.
 
-Hướng dẫn đầy đủ (cấu hình, vận hành, backup, bảo mật): **[DEPLOY.md](DEPLOY.md)**
+Hướng dẫn đầy đủ — cài Docker, mount đĩa, firewall, backup, bảo mật:
+**[DEPLOY.md](DEPLOY.md)**
 
 ## Hoạt động
 
